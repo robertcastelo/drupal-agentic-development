@@ -1,0 +1,21 @@
+#ddev-generated
+# SSH client configuration for AI agent inter-container access
+# The User for each host is set dynamically in the entrypoint
+# because DDEV maps the host user into containers with varying usernames
+
+Host web
+    HostName web
+    IdentityFile ~/.ssh/ddev_agent_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    RequestTTY no
+
+Host beads
+    HostName beads
+    User beads
+    IdentityFile ~/.ssh/ddev_agent_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    RequestTTY no

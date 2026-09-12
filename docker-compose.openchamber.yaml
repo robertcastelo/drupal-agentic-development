@@ -1,0 +1,26 @@
+services:
+  openchamber:
+    container_name: ddev-${DDEV_SITENAME}-openchamber
+    image: openchamber:local
+
+    environment:
+      OPENCODE_HOST: "http://ddev-${DDEV_SITENAME}-opencode:3000"
+      OPENCODE_SKIP_START: "true"
+      UI_PASSWORD: "${OPENCHAMBER_PASSWORD}"
+      OPENCHAMBER_HOST: "0.0.0.0"
+
+    ports:
+      - "3002:3000"
+
+    volumes:
+      - ../:/home/openchamber/workspaces/sandbox
+      - ./.ddev/openchamber/data/config:/home/openchamber/.config/openchamber
+      - ./.ddev/openchamber/data/opencode-share:/home/openchamber/.local/share/opencode
+      - ./.ddev/openchamber/data/opencode-config:/home/openchamber/.config/opencode
+      - ./.ddev/openchamber/data/ssh:/home/openchamber/.ssh
+
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+
+    restart: "no"

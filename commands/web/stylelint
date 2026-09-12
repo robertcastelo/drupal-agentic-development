@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+#ddev-generated
+set -u
+
+source /mnt/ddev_config/commands/helpers/path-map.sh
+source /mnt/ddev_config/commands/helpers/node-toolchain.sh
+
+PROJECT_ROOT="/var/www/html"
+TOOLCHAIN_BIN=""
+NODE_PATH=""
+
+# --- Toolchain resolution (root only) ---
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is not available in the DDEV web container." >&2
+  exit 127
+fi
+
+# Stylelint requires Node.js 18+ (Array.prototype.findLastIndex).
+NODE_MAJOR="$(node -e 'console.log(process.versions.node.split(".")[0])')"
+if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
+  echo "Error: Node.js $NODE_MAJOR is too old. Stylelint requires Node.js 18 or later." >&2
+  echo "Update nodejs_version in .ddev/config.yaml (recommended: \"20\") and run \"ddev restart\"." >&2
+  exit 1
+fi
+
+if ! resolve_node_tool "stylelint/bin/stylelint.mjs"; then
+  echo "Stylelint is not installed at the project root (${PROJECT_ROOT}/node_modules)." >&2
+  echo "Re-run the DDEV add-on installer and accept Node dependency installation," >&2
+  echo "or install stylelint manually (npm install / yarn install)." >&2
+  exit 127
+fi
+
+# --- Argument translation ---
+# Map host-absolute paths (from IDE invocations) to container paths.
+# Detect whether file paths were supplied (for default-glob injection).
+
+args=()
+has_positional=false
+after_double_dash=false
+map_next=false
+pass_next=false
+
+for arg in "$@"; do
+  if [ "$after_double_dash" = true ]; then
+    args+=("$(map_path "$arg")")
+    has_positional=true
+    continue
+  fi
+  if [ "$map_next" = true ]; then
+    args+=("$(map_path "$arg")")
+    map_next=false
+    continue
+  fi
+  if [ "$pass_next" = true ]; then
+    args+=("$arg")
+    pass_next=false
+    continue
+  fi
+  case "$arg" in
+    -h|--help)
+      cat <<'USAGE'
+Usage: ddev stylelint [args]
+
+Runs Stylelint inside the DDEV web container with Drupal.org GitLab CI
+template defaults. All flags are passed through to stylelint.
+USAGE
+      exec env NODE_PATH="$NODE_PATH" node "$TOOLCHAIN_BIN" --help
+      ;;
+    -V|--version)
+      exec env NODE_PATH="$NODE_PATH" node "$TOOLCHAIN_BIN" --version
+      ;;
+    --)
+      args+=("$arg")
+      after_double_dash=true
+      ;;
+    -c|--config|--ignore-path)
+      args+=("$arg")
+      map_next=true
+      ;;
+    -f|--formatter|--custom-formatter|--custom-syntax|-o|--output-file|--cache-location|--max-warnings|--stdin-filename|--suppress-location)
+      args+=("$arg")
+      pass_next=true
+      ;;
+    --config=*|--ignore-path=*)
+      flag="${arg%%=*}"
+      value="${arg#*=}"
+      args+=("${flag}=$(map_path "$value")")
+      ;;
+    -*)
+      args+=("$arg")
+      ;;
+    *)
+      args+=("$(map_path "$arg")")
+      has_positional=true
+      ;;
+  esac
+done
+
+# Inject default globs when no file paths are supplied, so bare
+# `ddev stylelint` scans style files via .stylelintignore exclusions.
+# Override with DCQ_STYLELINT_GLOBS (space-separated, stylelint CLI syntax).
+if [ "$has_positional" = false ]; then
+  read -ra _globs <<< "${DCQ_STYLELINT_GLOBS:-**/*.css}"
+  args+=("${_globs[@]}")
+fi
+
+# Run from project root so native .stylelintignore auto-discovery and
+# cosmiconfig upward config walk work correctly.
+cd "$PROJECT_ROOT"
+
+exec env NODE_PATH="$NODE_PATH" node "$TOOLCHAIN_BIN" "${args[@]}"

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+## Description: Run Playwright E2E tests in the playwright container
+## Usage: playwright [options] [test-file]
+## Example: ddev playwright
+## Example: ddev playwright tests/smoke.spec.js
+## Example: ddev playwright --ui
+## Example: ddev playwright --headed
+## ExecRaw: true
+
+ddev exec -s playwright xvfb-run npx playwright test "$@"

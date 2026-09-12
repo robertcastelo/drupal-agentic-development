@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+#ddev-generated
+## MutagenSync: true
+set -u
+
+source /mnt/ddev_config/commands/helpers/path-map.sh
+source /mnt/ddev_config/commands/helpers/node-toolchain.sh
+
+PROJECT_ROOT="/var/www/html"
+TOOLCHAIN_BIN=""
+NODE_PATH=""
+
+# --- Toolchain resolution (root only) ---
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is not available in the DDEV web container." >&2
+  exit 127
+fi
+
+# Stylelint requires Node.js 18+ (Array.prototype.findLastIndex).
+NODE_MAJOR="$(node -e 'console.log(process.versions.node.split(".")[0])')"
+if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
+  echo "Error: Node.js $NODE_MAJOR is too old. Stylelint requires Node.js 18 or later." >&2
+  echo "Update nodejs_version in .ddev/config.yaml (recommended: \"20\") and run \"ddev restart\"." >&2
+  exit 1
+fi
+
+if ! resolve_node_tool "stylelint/bin/stylelint.mjs"; then
+  echo "Stylelint is not installed at the project root (${PROJECT_ROOT}/node_modules)." >&2
+  echo "Re-run the DDEV add-on installer and accept Node dependency installation," >&2
+  echo "or install stylelint manually (npm install / yarn install)." >&2
+  exit 127
+fi
+
+# --- Argument translation ---
+
+args=()
+has_positional=false
+after_double_dash=false
+map_next=false
+
+for arg in "$@"; do
+  if [ "$after_double_dash" = true ]; then
+    args+=("$(map_path "$arg")")
+    has_positional=true
+    continue
+  fi
+  if [ "$map_next" = true ]; then
+    args+=("$(map_path "$arg")")
+    map_next=false
+    continue
+  fi
+  case "$arg" in
+    --preview)
+      echo "Error: --preview has been removed." >&2
+      echo "Use 'ddev stylelint-fix' then 'git diff' to review changes." >&2
+      exit 1
+      ;;
+    -h|--help)
+      cat <<'USAGE'
+Usage: ddev stylelint-fix [args]
+
+Applies Stylelint --fix directly to files. All flags are passed through
+to stylelint. Use 'git diff' afterwards to review changes.
+
+Examples:
+  ddev stylelint-fix                    # Fix all custom code
+  ddev stylelint-fix path/to/file.css   # Fix specific file
+USAGE
+      exec env NODE_PATH="$NODE_PATH" node "$TOOLCHAIN_BIN" --help
+      ;;
+    -V|--version)
+      exec env NODE_PATH="$NODE_PATH" node "$TOOLCHAIN_BIN" --version
+      ;;
+    --)
+      args+=("$arg")
+      after_double_dash=true
+      ;;
+    -c|--config|--ignore-path)
+      args+=("$arg")
+      map_next=true
+      ;;
+    --config=*|--ignore-path=*)
+      flag="${arg%%=*}"
+      value="${arg#*=}"
+      args+=("${flag}=$(map_path "$value")")
+      ;;
+    -*)
+      args+=("$arg")
+      ;;
+    *)
+      args+=("$(map_path "$arg")")
+      has_positional=true
+      ;;
+  esac
+done
+
+# Override with DCQ_STYLELINT_GLOBS (space-separated, stylelint CLI syntax).
+if [ "$has_positional" = false ]; then
+  read -ra _globs <<< "${DCQ_STYLELINT_GLOBS:-**/*.css}"
+  args+=("${_globs[@]}")
+fi
+
+cd "$PROJECT_ROOT"
+
+exec env NODE_PATH="$NODE_PATH" node "$TOOLCHAIN_BIN" --fix "${args[@]}"

@@ -1,0 +1,8 @@
+#!/bin/bash
+#ddev-generated
+# Execute a binary in the web container over SSH (preserves argument quoting).
+# Usage: web-ssh-exec <relative-or-absolute-binary> [args ...]
+target="$1"; shift
+cmd="cd /var/www/html && exec $target"
+for a in "$@"; do cmd="$cmd $(printf "%q" "$a")"; done
+exec ssh -o BatchMode=yes -o LogLevel=ERROR web "$cmd"

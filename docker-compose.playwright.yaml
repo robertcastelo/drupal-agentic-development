@@ -1,0 +1,21 @@
+services:
+  playwright:
+    build:
+      context: ..
+      dockerfile: .ddev/playwright/Dockerfile
+
+    container_name: ddev-${DDEV_SITENAME}-playwright
+
+    working_dir: /workspace
+
+    volumes:
+      - ../:/workspace
+
+    networks:
+      - ddev_default
+
+    shm_size: 2gb
+
+    command: ["tail", "-f", "/dev/null"]
+
+    restart: "no"

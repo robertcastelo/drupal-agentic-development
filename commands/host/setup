@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# One-time project setup for a fresh clone / new machine.
+#
+# Usage: ddev setup
+#
+# Generates .ddev/.env from .ddev/.env.example with a fresh
+# OPENCHAMBER_PASSWORD if it does not already exist. Idempotent: running it
+# again will NOT overwrite an existing .env or password.
+#
+# Run this once after cloning before `ddev start`.
+
+set -euo pipefail
+
+PROJECT_ENV=".ddev/.env"
+EXAMPLE_ENV=".ddev/.env.example"
+
+echo "==> DDEV setup for $(basename "$(pwd)")"
+
+if [ -f "$PROJECT_ENV" ]; then
+  echo "    .ddev/.env already exists - leaving untouched."
+else
+  if [ ! -f "$EXAMPLE_ENV" ]; then
+    echo "    ERROR: $EXAMPLE_ENV not found - cannot generate .env" >&2
+    exit 1
+  fi
+  NEW_PASSWORD="$(openssl rand -base64 12 | tr -d '\n')"
+  # Replace the placeholder password from the example, keep everything else.
+  sed "s|OPENCHAMBER_PASSWORD=.*|OPENCHAMBER_PASSWORD=${NEW_PASSWORD}|" \
+    "$EXAMPLE_ENV" > "$PROJECT_ENV"
+  chmod 600 "$PROJECT_ENV"
+  echo "    Generated .ddev/.env with a new OPENCHAMBER_PASSWORD."
+  echo "    Keep this file secret; it is gitignored."
+fi
+
+# Ensure the OpenChamber image is present so `ddev start` won't fail.
+if ! docker image inspect openchamber:local >/dev/null 2>&1; then
+  echo "    Building openchamber:local (first run)..."
+  .ddev/openchamber/build.sh
+else
+  echo "    openchamber:local image already present."
+fi
+
+echo "==> Setup complete. You can now run: ddev start"

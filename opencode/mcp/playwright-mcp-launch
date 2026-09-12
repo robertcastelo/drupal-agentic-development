@@ -1,0 +1,22 @@
+#!/bin/bash
+# Resolves the newest bundled Playwright Chromium binary and execs @playwright/mcp.
+# Lives in the opencode config dir (bind-mounted into the container at
+# /home/opencode/.config/opencode) so it survives image rebuilds without a COPY.
+set -euo pipefail
+
+mapfile -t chrome_dirs < <(compgen -G "$HOME/.cache/ms-playwright/chromium-*" | sort -V)
+if [ "${#chrome_dirs[@]}" -eq 0 ]; then
+  echo "playwright-mcp-launch: no bundled chromium found in $HOME/.cache/ms-playwright (run 'npx playwright install chromium')" >&2
+  exit 1
+fi
+
+chrome="${chrome_dirs[-1]}/chrome-linux/chrome"
+if [ ! -x "$chrome" ]; then
+  chrome="${chrome_dirs[-1]}/chrome-linux-arm64/chrome"
+fi
+if [ ! -x "$chrome" ]; then
+  echo "playwright-mcp-launch: executable not found: $chrome" >&2
+  exit 1
+fi
+
+exec npx -y @playwright/mcp --headless --no-sandbox --browser chromium --executable-path "$chrome" "$@"

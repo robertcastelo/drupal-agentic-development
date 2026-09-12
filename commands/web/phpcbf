@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#ddev-generated
+## MutagenSync: true
+set -u
+
+PHPCBF_BIN="vendor/bin/phpcbf"
+source /mnt/ddev_config/commands/helpers/path-map.sh
+
+if [ ! -x "$PHPCBF_BIN" ]; then
+  echo "phpcbf not found at $PHPCBF_BIN. Run 'ddev composer install' to install vendor/bin/phpcbf." >&2
+  exit 127
+fi
+
+has_config=false
+for config_file in .phpcs.xml phpcs.xml phpcs.xml.dist .phpcs.xml.dist; do
+  if [ -f "$config_file" ]; then
+    has_config=true
+    break
+  fi
+done
+
+rewrite_args=()
+args=("$@")
+arg_count=${#args[@]}
+index=0
+while [ "$index" -lt "$arg_count" ]; do
+  arg="${args[$index]}"
+  case "$arg" in
+    --standard=*)
+      value="${arg#*=}"
+      # Rewrite host paths for standards into container paths.
+      rewrite_args+=("--standard=$(map_path "$value")")
+      ;;
+    --standard)
+      next_arg="${args[$((index + 1))]:-}"
+      # Rewrite host paths for standards into container paths.
+      rewrite_args+=("--standard" "$(map_path "$next_arg")")
+      index=$((index + 1))
+      ;;
+    --stdin-path=*)
+      value="${arg#*=}"
+      # Rewrite stdin file paths so PHPCBF can resolve them in the container.
+      rewrite_args+=("--stdin-path=$(map_path "$value")")
+      ;;
+    --stdin-path)
+      next_arg="${args[$((index + 1))]:-}"
+      # Rewrite stdin file paths so PHPCBF can resolve them in the container.
+      rewrite_args+=("--stdin-path" "$(map_path "$next_arg")")
+      index=$((index + 1))
+      ;;
+    *)
+      rewrite_args+=("$(map_path "$arg")")
+      ;;
+  esac
+  index=$((index + 1))
+done
+
+if [ "$has_config" = true ]; then
+  "$PHPCBF_BIN" "${rewrite_args[@]}"
+  exit $?
+fi
+
+echo "PHPCS config file is missing. Create .phpcs.xml in the project root (for example by reinstalling the add-on)." >&2
+exit 2

@@ -1,0 +1,44 @@
+name: drupal-code-quality
+repository: UltraBob/ddev-drupal-code-quality
+version: v1.0.6
+install_date: "2026-06-02T19:00:27+01:00"
+project_files:
+    - config.drupal-code-quality.yaml
+    - commands/helpers/path-map.sh
+    - commands/helpers/node-toolchain.sh
+    - commands/web/checks
+    - commands/web/composer-validate
+    - commands/web/cspell
+    - commands/web/cspell-suggest
+    - commands/web/eslint
+    - commands/web/eslint-fix
+    - commands/web/php-parallel-lint
+    - commands/web/phpcbf
+    - commands/web/phpcs
+    - commands/web/phpstan
+    - commands/web/prettier
+    - commands/web/prettier-fix
+    - commands/web/stylelint
+    - commands/web/stylelint-fix
+    - drupal-code-quality
+    - dcq-install.sh
+global_files: []
+removal_actions:
+    - |
+      #ddev-description Remove Drupal code quality shims
+      project_root="$(cd .. && pwd)"
+      target="${project_root%/}/.ddev/drupal-code-quality/tooling/bin"
+      if [ -d "$target" ]; then
+        for file in "$target"/*; do
+          [ -e "$file" ] || continue
+          if head -n 1 "$file" | grep -q '^#ddev-generated'; then
+            rm -f "$file"
+            echo "Removed shim: $file"
+          else
+            echo "Skipping $file (not generated)"
+          fi
+        done
+        find "$target" -type d -empty -delete
+      fi
+      rm -f .dcq-docroot
+      rm -rf drupal-code-quality

@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+#ddev-generated
+## MutagenSync: true
+set -u
+
+source /mnt/ddev_config/commands/helpers/path-map.sh
+source /mnt/ddev_config/commands/helpers/node-toolchain.sh
+
+print_help() {
+  cat <<'USAGE'
+Usage: ddev prettier-fix [args]
+
+Applies Prettier formatting directly to files (matches standard prettier --write behavior).
+
+Use --preview to see a patch preview and confirm before applying fixes.
+This generates a patch in dcq-reports/ and prompts for confirmation.
+
+Examples:
+  ddev prettier-fix                    # Apply formatting directly
+  ddev prettier-fix --preview          # Preview and confirm before applying
+  ddev prettier-fix path/to/file.js    # Format specific file
+USAGE
+}
+
+PROJECT_ROOT="/var/www/html"
+DOCROOT="${DCQ_DOCROOT:-web}"
+DOCROOT_PATH="${PROJECT_ROOT}/${DOCROOT}"
+TOOLCHAIN_BIN=""
+NODE_PATH=""
+
+has_help=false
+has_version=false
+has_positional=false
+has_config=false
+seen_double_dash=false
+explicit_paths=false
+preview_mode=false
+clean_args=()
+
+for arg in "$@"; do
+  if [ "$arg" = "--preview" ]; then
+    preview_mode=true
+    continue
+  fi
+  clean_args+=("$arg")
+done
+
+for arg in "${clean_args[@]}"; do
+  if [ "$seen_double_dash" = true ]; then
+    has_positional=true
+    explicit_paths=true
+    break
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      ;;
+    -h|--help)
+      has_help=true
+      ;;
+    -V|--version)
+      has_version=true
+      ;;
+    -c|--config|--config=*)
+      has_config=true
+      ;;
+    -* )
+      ;;
+    *)
+      has_positional=true
+      explicit_paths=true
+      ;;
+  esac
+  if [ "$has_help" = true ] || [ "$has_version" = true ]; then
+    break
+  fi
+done
+
+if [ "$has_help" = true ]; then
+  print_help
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is not available in the DDEV web container." >&2
+  echo "Install Node in the DDEV web container to run Prettier." >&2
+  exit 127
+fi
+
+if ! resolve_node_tool "prettier/bin/prettier.cjs"; then
+  echo "Prettier is not installed at the project root (${PROJECT_ROOT}/node_modules)." >&2
+  echo "Re-run the DDEV add-on installer and accept Node dependency installation, or install prettier manually in the project root (npm install / yarn install)." >&2
+  exit 127
+fi
+
+if [ "$has_help" = true ]; then
+  node "$TOOLCHAIN_BIN" --help
+  exit $?
+fi
+
+if [ "$has_version" = true ]; then
+  node "$TOOLCHAIN_BIN" --version
+  exit $?
+fi
+
+normalize_path() {
+  local path="$1"
+  path="$(map_path "$path")"
+  if [[ "$path" == /var/www/html/* ]]; then
+    path="${path#/var/www/html/}"
+  fi
+  if [ "$DOCROOT" != "web" ] && [[ "$path" == web/* ]]; then
+    path="${DOCROOT}/${path#web/}"
+  fi
+  if [[ "$path" == "${DOCROOT}/"* ]]; then
+    echo "$path"
+    return
+  fi
+  if [[ "$path" == modules/* || "$path" == themes/* || "$path" == profiles/* ]]; then
+    echo "${DOCROOT}/$path"
+    return
+  fi
+  echo "$path"
+}
+
+TARGET_PREFIXES=()
+RAW_PATHS=()
+seen_double_dash=false
+args=("${clean_args[@]}")
+arg_count=${#args[@]}
+index=0
+while [ "$index" -lt "$arg_count" ]; do
+  arg="${args[$index]}"
+  if [ "$seen_double_dash" = true ]; then
+    RAW_PATHS+=("$arg")
+    index=$((index + 1))
+    continue
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      ;;
+    -c|--config)
+      index=$((index + 1))
+      ;;
+    --config=*)
+      ;;
+    -*)
+      ;;
+    *)
+      RAW_PATHS+=("$arg")
+      ;;
+  esac
+  index=$((index + 1))
+done
+
+if [ "${#RAW_PATHS[@]}" -gt 0 ]; then
+  for raw in "${RAW_PATHS[@]}"; do
+    TARGET_PREFIXES+=("$(normalize_path "$raw")")
+  done
+else
+  TARGET_PREFIXES+=("$DOCROOT")
+fi
+
+FINAL_ARGS=()
+normalize_config_path() {
+  local path="$1"
+  path="$(map_path "$path")"
+  if [[ "$path" == /var/www/html/* ]]; then
+    path="${path#/var/www/html/}"
+  fi
+  if [ "$DOCROOT" != "web" ] && [[ "$path" == web/* ]]; then
+    path="${DOCROOT}/${path#web/}"
+  fi
+  echo "$path"
+}
+
+normalize_docroot_arg() {
+  local arg="$1"
+  arg="$(map_path "$arg")"
+  if [[ "$arg" == /var/www/html/* ]]; then
+    arg="${arg#/var/www/html/}"
+  fi
+  if [ "$DOCROOT" != "web" ] && [[ "$arg" == web/* ]]; then
+    arg="${DOCROOT}/${arg#web/}"
+  fi
+  if [[ "$arg" == "${DOCROOT}/"* ]]; then
+    arg="${arg#${DOCROOT}/}"
+  elif [ "$arg" = "$DOCROOT" ]; then
+    arg="."
+  fi
+  printf '%s' "$arg"
+}
+
+if [ "$explicit_paths" = true ]; then
+  args=("${clean_args[@]}")
+  arg_count=${#args[@]}
+  index=0
+  seen_double_dash=false
+  while [ "$index" -lt "$arg_count" ]; do
+    arg="${args[$index]}"
+    if [ "$seen_double_dash" = true ]; then
+      arg="$(normalize_docroot_arg "$arg")"
+      FINAL_ARGS+=("$arg")
+      index=$((index + 1))
+      continue
+    fi
+    case "$arg" in
+      --)
+        seen_double_dash=true
+        FINAL_ARGS+=("$arg")
+        ;;
+      -c|--config)
+        next_arg="${args[$((index + 1))]:-}"
+        FINAL_ARGS+=("$arg" "$(normalize_config_path "$next_arg")")
+        index=$((index + 1))
+        ;;
+      --config=*)
+        config_value="${arg#*=}"
+        FINAL_ARGS+=("--config=$(normalize_config_path "$config_value")")
+        ;;
+      -*)
+        FINAL_ARGS+=("$arg")
+        ;;
+      *)
+        FINAL_ARGS+=("$(normalize_path "$arg")")
+        ;;
+    esac
+    index=$((index + 1))
+  done
+fi
+
+DEFAULT_FILES=()
+if [ "$explicit_paths" = false ]; then
+  if [ ! -d "$DOCROOT" ]; then
+    echo "Configured docroot '$DOCROOT' does not exist. Nothing to format." >&2
+    exit 2
+  fi
+  DEFAULT_FILES=("$DOCROOT")
+fi
+
+FILES=()
+if [ "$explicit_paths" = false ]; then
+  FILES=("${DEFAULT_FILES[@]}")
+else
+  FILES=("${FINAL_ARGS[@]}")
+fi
+
+DEFAULT_CONFIG=""
+if [ -f "${PROJECT_ROOT}/.prettierrc.json" ]; then
+  DEFAULT_CONFIG="${PROJECT_ROOT}/.prettierrc.json"
+elif [ "$has_config" = false ]; then
+  echo "Prettier config file is missing. Create .prettierrc.json in the project root (for example by reinstalling the add-on)." >&2
+  exit 2
+fi
+
+# ============================================================================
+# PREVIEW MODE: Generate patch, show preview, prompt to apply
+# ============================================================================
+if [ "$preview_mode" = true ]; then
+  REPORT_DIR="dcq-reports"
+  mkdir -p "$REPORT_DIR"
+  PATCH_FILE="${REPORT_DIR}/_prettier.patch"
+
+  tmp_root="$(mktemp -d)"
+  trap 'rm -rf "$tmp_root"' EXIT
+
+  cd "$PROJECT_ROOT"
+  tar -cf - \
+    --exclude=./.git \
+    --exclude=./.trunk \
+    --exclude=./node_modules \
+    --exclude="./${DOCROOT}/*/node_modules" \
+    --exclude=./vendor \
+    --exclude=./dcq-reports \
+    --exclude='*/.git' \
+    --exclude='*/.git/*' \
+    . | (cd "$tmp_root" && tar -xf -)
+
+  preview_cmd=(env "NODE_PATH=$NODE_PATH" node "$TOOLCHAIN_BIN")
+  if [ -n "$DEFAULT_CONFIG" ] && [ "$has_config" = false ]; then
+    preview_cmd+=(--config "$DEFAULT_CONFIG")
+  fi
+  preview_cmd+=(--write)
+  
+  (cd "$tmp_root" && "${preview_cmd[@]}" "${FILES[@]}")
+  preview_exit=$?
+
+  if [ "${preview_exit:-0}" -ne 0 ]; then
+    echo "Prettier preview failed (exit ${preview_exit})." >&2
+    exit "$preview_exit"
+  fi
+
+  : > "${PATCH_FILE}.raw"
+  for prefix in "${TARGET_PREFIXES[@]}"; do
+    [ -z "$prefix" ] && continue
+    if [ ! -e "$PROJECT_ROOT/$prefix" ] && [ ! -e "$tmp_root/$prefix" ]; then
+      continue
+    fi
+    diff -ruN \
+      --exclude=.git \
+      --exclude='.git/*' \
+      "$PROJECT_ROOT/$prefix" "$tmp_root/$prefix" >> "${PATCH_FILE}.raw" || true
+  done
+
+  sed -E "s/diff -ruN( '--exclude=[^']+')+/diff -ruN/" "${PATCH_FILE}.raw" > "$PATCH_FILE"
+  rm -f "${PATCH_FILE}.raw"
+
+  change_count=$(grep -c '^diff -ruN ' "$PATCH_FILE" || true)
+  if [ "$change_count" -eq 0 ]; then
+    change_count=$(grep -c '^--- ' "$PATCH_FILE" || true)
+  fi
+
+  if [ "$change_count" -eq 0 ]; then
+    echo "No Prettier formatting changes to apply." >&2
+    exit 0
+  fi
+
+  echo "Preview: ${change_count} file(s) would change." >&2
+  echo "Patch: ${PATCH_FILE}" >&2
+
+  if [ -t 0 ]; then
+    printf "Apply these changes? [y/N] "
+    read -r reply
+    case "$reply" in
+      y|Y) ;;
+      *) echo "Not applying changes." >&2; exit 0 ;;
+    esac
+  else
+    echo "No TTY available. Not applying changes." >&2
+    exit 0
+  fi
+
+  # Apply fixes
+  cd "$PROJECT_ROOT"
+  fix_cmd=(env "NODE_PATH=$NODE_PATH" node "$TOOLCHAIN_BIN")
+  if [ -n "$DEFAULT_CONFIG" ] && [ "$has_config" = false ]; then
+    fix_cmd+=(--config "$DEFAULT_CONFIG")
+  fi
+  fix_cmd+=(--write)
+  
+  "${fix_cmd[@]}" "${FILES[@]}"
+  fix_exit=$?
+
+  if [ "$fix_exit" -eq 0 ]; then
+    echo "Prettier formatting applied." >&2
+  else
+    echo "Prettier exited with status ${fix_exit}." >&2
+  fi
+
+  echo "Running Prettier check to verify..." >&2
+  ./.ddev/commands/web/prettier "${clean_args[@]}"
+  check_exit=$?
+  exit "$check_exit"
+fi
+
+# ============================================================================
+# DEFAULT MODE: Apply formatting directly (standard prettier --write behavior)
+# ============================================================================
+cd "$PROJECT_ROOT"
+
+fix_cmd=(env "NODE_PATH=$NODE_PATH" node "$TOOLCHAIN_BIN")
+if [ -n "$DEFAULT_CONFIG" ] && [ "$has_config" = false ]; then
+  fix_cmd+=(--config "$DEFAULT_CONFIG")
+fi
+fix_cmd+=(--write)
+
+"${fix_cmd[@]}" "${FILES[@]}"
+exit $?

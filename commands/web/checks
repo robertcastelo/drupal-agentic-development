@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#ddev-generated
+set -u
+
+REPORT_DIR="dcq-reports"
+mkdir -p "$REPORT_DIR"
+
+DOCROOT="$(cat /mnt/ddev_config/.dcq-docroot 2>/dev/null || true)"
+DOCROOT="${DOCROOT#/}"
+DOCROOT="${DOCROOT%/}"
+if [ -z "$DOCROOT" ]; then
+  DOCROOT="web"
+fi
+
+# Ordered list of Drupal.org GitLab CI template default tools to run.
+TOOLS=(
+  "composer-validate"
+  "php-parallel-lint"
+  "phpcs"
+  "phpstan"
+  "eslint"
+  "stylelint"
+  "prettier"
+  "cspell"
+)
+
+declare -A TOOL_PATHS=(
+  ["composer-validate"]="./.ddev/commands/web/composer-validate"
+  ["php-parallel-lint"]="./.ddev/commands/web/php-parallel-lint"
+  ["phpcs"]="./.ddev/commands/web/phpcs"
+  ["phpstan"]="./.ddev/commands/web/phpstan"
+  ["eslint"]="./.ddev/commands/web/eslint"
+  ["stylelint"]="./.ddev/commands/web/stylelint"
+  ["prettier"]="./.ddev/commands/web/prettier"
+  ["cspell"]="./.ddev/commands/web/cspell"
+)
+
+declare -A STATUS
+
+echo "Running checks (fast mode)..."
+
+for tool in "${TOOLS[@]}"; do
+  log_file="${REPORT_DIR}/${tool}.log"
+  echo "==> ${tool}" | tee "$log_file"
+  tool_path="${TOOL_PATHS[$tool]}"
+  if [ -z "$tool_path" ] || [ ! -x "$tool_path" ]; then
+    echo "SKIP: ${tool} command not available in container." | tee -a "$log_file"
+    STATUS["$tool"]=SKIP
+    continue
+  fi
+
+  if [ "$tool" = "php-parallel-lint" ] && \
+    [ ! -x "vendor/bin/parallel-lint" ] && \
+    [ ! -x "vendor/bin/php-parallel-lint" ]; then
+    # Skip when the binary isn't installed; keeps the run useful for new projects.
+    echo "SKIP: php-parallel-lint is not installed in vendor/bin." | tee -a "$log_file"
+    STATUS["$tool"]=SKIP
+    continue
+  fi
+
+  # Use compact formatter for stylelint in checks mode to avoid RangeError
+  # crash when the table formatter tries to render thousands of violations.
+  if [ "$tool" = "stylelint" ]; then
+    "$tool_path" --formatter compact >"$log_file" 2>&1
+  else
+    "$tool_path" >"$log_file" 2>&1
+  fi
+  exit_code=$?
+  if [ "$exit_code" -eq 0 ]; then
+    STATUS["$tool"]=PASS
+  else
+    STATUS["$tool"]=FAIL
+  fi
+  echo "(exit ${exit_code})" >> "$log_file"
+  if [ "$exit_code" -ne 0 ]; then
+    cat "$log_file"
+  fi
+ done
+
+printf "\nSummary:\n"
+for tool in "${TOOLS[@]}"; do
+  status="${STATUS[$tool]:-SKIP}"
+  printf '%s\n' "- ${tool}: ${status} (log: ${REPORT_DIR}/${tool}.log)"
+ done
+
+# Check for failures and exit with clear message
+failed_tools=()
+for tool in "${TOOLS[@]}"; do
+  if [ "${STATUS[$tool]:-}" = "FAIL" ]; then
+    failed_tools+=("$tool")
+  fi
+done
+
+if [ "${#failed_tools[@]}" -gt 0 ]; then
+  printf '\n❌ FAILED: %d check(s) found issues: %s\n' "${#failed_tools[@]}" "$(IFS=', '; echo "${failed_tools[*]}")" >&2
+  printf 'Review logs in %s/ for details.\n' "${REPORT_DIR}" >&2
+  exit 1
+fi
+
+printf '\n✅ All checks passed.\n'
+exit 0

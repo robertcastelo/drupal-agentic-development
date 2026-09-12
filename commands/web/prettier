@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+#ddev-generated
+set -u
+
+source /mnt/ddev_config/commands/helpers/path-map.sh
+source /mnt/ddev_config/commands/helpers/node-toolchain.sh
+
+print_help() {
+  cat <<'USAGE'
+Usage: ddev prettier [args]
+
+Runs Prettier in check mode inside the DDEV web container with Drupal CI config.
+USAGE
+}
+
+has_help=false
+has_version=false
+has_positional=false
+has_config=false
+seen_double_dash=false
+explicit_paths=false
+
+for arg in "$@"; do
+  if [ "$seen_double_dash" = true ]; then
+    has_positional=true
+    explicit_paths=true
+    break
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      ;;
+    -h|--help)
+      has_help=true
+      ;;
+    -V|--version)
+      has_version=true
+      ;;
+    -c|--config|--config=*)
+      has_config=true
+      ;;
+    --)
+      ;;
+    -* )
+      ;;
+    *)
+      has_positional=true
+      explicit_paths=true
+      ;;
+  esac
+  if [ "$has_help" = true ] || [ "$has_version" = true ]; then
+    break
+  fi
+done
+
+if [ "$has_help" = true ]; then
+  print_help
+fi
+
+PROJECT_ROOT="/var/www/html"
+DOCROOT="${DCQ_DOCROOT:-web}"
+DOCROOT_PATH="${PROJECT_ROOT}/${DOCROOT}"
+TOOLCHAIN_BIN=""
+NODE_PATH=""
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is not available in the DDEV web container." >&2
+  echo "Install Node in the DDEV web container to run Prettier." >&2
+  exit 127
+fi
+
+if ! resolve_node_tool ".bin/prettier"; then
+  echo "Prettier is not installed at the project root (${PROJECT_ROOT}/node_modules)." >&2
+  echo "Re-run the DDEV add-on installer and accept Node dependency installation, or install prettier manually in the project root (npm install / yarn install)." >&2
+  exit 127
+fi
+
+if [ "$has_help" = true ]; then
+  "$TOOLCHAIN_BIN" --help
+  exit $?
+fi
+
+if [ "$has_version" = true ]; then
+  "$TOOLCHAIN_BIN" --version
+  exit $?
+fi
+
+# Run from the Drupal docroot so config resolution matches CI expectations.
+cd "$DOCROOT"
+
+CMD=(env "NODE_PATH=$NODE_PATH" "$TOOLCHAIN_BIN" --check)
+if [ "$has_config" = false ]; then
+  if [ ! -f "${PROJECT_ROOT}/.prettierrc.json" ]; then
+    echo "Prettier config file is missing. Create .prettierrc.json in the project root (for example by reinstalling the add-on)." >&2
+    exit 2
+  fi
+  CMD+=(--config="${PROJECT_ROOT}/.prettierrc.json")
+  if [ -f "${PROJECT_ROOT}/.prettierignore" ]; then
+    CMD+=(--ignore-path="${PROJECT_ROOT}/.prettierignore")
+  fi
+fi
+
+normalize_prettier_path() {
+  local path="$1"
+  path="$(map_path "$path")"
+  if [[ "$path" == /var/www/html/* ]]; then
+    path="${path#/var/www/html/}"
+  fi
+  if [ "$DOCROOT" != "web" ] && [[ "$path" == web/* ]]; then
+    path="${DOCROOT}/${path#web/}"
+  fi
+  if [ "$path" = "$DOCROOT" ]; then
+    echo "."
+    return
+  fi
+  if [[ "$path" == "${DOCROOT}/"* ]]; then
+    path="${path#${DOCROOT}/}"
+  fi
+  echo "$path"
+}
+
+FINAL_ARGS=()
+if [ "$explicit_paths" = true ]; then
+  args=("$@")
+  arg_count=${#args[@]}
+  index=0
+  seen_double_dash=false
+  while [ "$index" -lt "$arg_count" ]; do
+    arg="${args[$index]}"
+    if [ "$seen_double_dash" = true ]; then
+      FINAL_ARGS+=("$(normalize_prettier_path "$arg")")
+      index=$((index + 1))
+      continue
+    fi
+    case "$arg" in
+      --)
+        seen_double_dash=true
+        FINAL_ARGS+=("$arg")
+        ;;
+      -c|--config|--ignore-path)
+        FINAL_ARGS+=("$arg")
+        next_arg="${args[$((index + 1))]:-}"
+        if [ -n "$next_arg" ]; then
+          next_arg="$(map_path "$next_arg")"
+          FINAL_ARGS+=("$next_arg")
+          index=$((index + 1))
+        fi
+        ;;
+      --config=*|--ignore-path=*)
+        key="${arg%%=*}"
+        value="${arg#*=}"
+        value="$(map_path "$value")"
+        FINAL_ARGS+=("${key}=${value}")
+        ;;
+      -*)
+        FINAL_ARGS+=("$arg")
+        ;;
+      *)
+        FINAL_ARGS+=("$(normalize_prettier_path "$arg")")
+        ;;
+    esac
+    index=$((index + 1))
+  done
+fi
+
+if [ "$explicit_paths" = false ]; then
+  "${CMD[@]}" "$@" "."
+  exit $?
+fi
+
+"${CMD[@]}" "${FINAL_ARGS[@]}"
+exit $?

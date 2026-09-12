@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+#ddev-generated
+set -u
+
+source /mnt/ddev_config/commands/helpers/path-map.sh
+source /mnt/ddev_config/commands/helpers/node-toolchain.sh
+
+print_help() {
+  cat <<'USAGE'
+Usage: ddev cspell [args]
+
+Runs CSpell inside the DDEV web container with Drupal.org GitLab CI template defaults.
+USAGE
+}
+
+has_help=false
+has_version=false
+has_positional=false
+has_config=false
+seen_double_dash=false
+explicit_paths=false
+
+for arg in "$@"; do
+  if [ "$seen_double_dash" = true ]; then
+    has_positional=true
+    explicit_paths=true
+    break
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      ;;
+    -h|--help)
+      has_help=true
+      ;;
+    -V|--version)
+      has_version=true
+      ;;
+    -c|--config|--config=*)
+      has_config=true
+      ;;
+    --)
+      ;;
+    -* )
+      ;;
+    *)
+      has_positional=true
+      explicit_paths=true
+      ;;
+  esac
+  if [ "$has_help" = true ] || [ "$has_version" = true ]; then
+    break
+  fi
+done
+
+if [ "$has_help" = true ]; then
+  print_help
+fi
+
+PROJECT_ROOT="/var/www/html"
+DOCROOT="${DCQ_DOCROOT:-web}"
+DOCROOT_PATH="${PROJECT_ROOT}/${DOCROOT}"
+TOOLCHAIN_BIN=""
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is not available in the DDEV web container." >&2
+  echo "Install Node in the DDEV web container to run CSpell." >&2
+  exit 127
+fi
+
+if ! resolve_node_tool ".bin/cspell"; then
+  echo "CSpell is not installed at the project root (${PROJECT_ROOT}/node_modules)." >&2
+  echo "Re-run the DDEV add-on installer and accept Node dependency installation, or install cspell manually in the project root (npm install / yarn install)." >&2
+  exit 127
+fi
+
+if [ "$has_help" = true ]; then
+  "$TOOLCHAIN_BIN" --help
+  exit $?
+fi
+
+if [ "$has_version" = true ]; then
+  "$TOOLCHAIN_BIN" --version
+  exit $?
+fi
+
+CMD=("$TOOLCHAIN_BIN")
+if [ "$has_config" = false ]; then
+  if [ ! -f "${PROJECT_ROOT}/.cspell.json" ]; then
+    echo "CSpell config file is missing. Create .cspell.json in the project root (for example by reinstalling the add-on)." >&2
+    exit 2
+  fi
+  CMD+=(-c "${PROJECT_ROOT}/.cspell.json")
+  project_words_file="${PROJECT_ROOT}/.cspell-project-words.txt"
+  if [ ! -f "$project_words_file" ]; then
+    : > "$project_words_file"
+  fi
+fi
+
+normalize_path() {
+  local path="$1"
+  path="$(map_path "$path")"
+  if [[ "$path" == /var/www/html/* ]]; then
+    path="${path#/var/www/html/}"
+  fi
+  if [ "$DOCROOT" != "web" ] && [[ "$path" == web/* ]]; then
+    path="${DOCROOT}/${path#web/}"
+  fi
+  if [[ "$path" == "${DOCROOT}/"* ]]; then
+    echo "$path"
+    return
+  fi
+  if [[ "$path" == modules/* || "$path" == themes/* || "$path" == profiles/* ]]; then
+    echo "${DOCROOT}/$path"
+    return
+  fi
+  echo "$path"
+}
+
+FLAG_ARGS=()
+POSITIONAL_ARGS=()
+args=("$@")
+arg_count=${#args[@]}
+index=0
+seen_double_dash=false
+while [ "$index" -lt "$arg_count" ]; do
+  arg="${args[$index]}"
+  if [ "$seen_double_dash" = true ]; then
+    POSITIONAL_ARGS+=("$(normalize_path "$arg")")
+    index=$((index + 1))
+    continue
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      FLAG_ARGS+=("$arg")
+      ;;
+    -c|--config)
+      next_arg="${args[$((index + 1))]:-}"
+      FLAG_ARGS+=("$arg" "$(map_path "$next_arg")")
+      index=$((index + 1))
+      ;;
+    --config=*)
+      config_value="${arg#*=}"
+      FLAG_ARGS+=("--config=$(map_path "$config_value")")
+      ;;
+    -*)
+      FLAG_ARGS+=("$arg")
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$(normalize_path "$arg")")
+      ;;
+  esac
+  index=$((index + 1))
+done
+
+if [ "$explicit_paths" = false ]; then
+  "${CMD[@]}" "${FLAG_ARGS[@]}" "."
+  exit $?
+fi
+
+"${CMD[@]}" "${FLAG_ARGS[@]}" "${POSITIONAL_ARGS[@]}"
+exit $?

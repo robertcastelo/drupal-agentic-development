@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+#ddev-generated
+set -u
+
+PHPSTAN_BIN="vendor/bin/phpstan"
+TMP_FILES=()
+source /mnt/ddev_config/commands/helpers/path-map.sh
+
+print_help() {
+  cat <<'USAGE'
+Usage: ddev phpstan [args]
+
+Runs PHPStan inside the DDEV web container. This wrapper forwards all arguments
+and requires a project PHPStan config unless --configuration is provided.
+USAGE
+}
+
+if [ ! -x "$PHPSTAN_BIN" ]; then
+  echo "phpstan not found at $PHPSTAN_BIN. Run 'ddev composer install' to install vendor/bin/phpstan." >&2
+  print_help
+  exit 127
+fi
+
+cleanup() {
+  for tmp_file in "${TMP_FILES[@]}"; do
+    if [ -n "$tmp_file" ] && [ -f "$tmp_file" ]; then
+      rm -f "$tmp_file"
+    fi
+  done
+}
+
+ensure_baseline_include() {
+  local config_path="$1"
+  local tmp
+
+  if [ -z "$config_path" ] || [ ! -f "$config_path" ]; then
+    return 1
+  fi
+
+  if grep -q 'phpstan-baseline\.neon' "$config_path"; then
+    return 0
+  fi
+
+  if grep -q '^[[:space:]]*includes:' "$config_path"; then
+    tmp="$(mktemp /tmp/phpstan-include.XXXXXX.neon)"
+    awk '
+      BEGIN { added = 0 }
+      /^[[:space:]]*includes:/ {
+        if (added == 0) {
+          match($0, /[^[:space:]]/)
+          prefix = substr($0, 1, RSTART - 1)
+          print $0
+          print prefix "  - phpstan-baseline.neon"
+          added = 1
+          next
+        }
+      }
+      { print }
+    ' "$config_path" > "$tmp"
+    mv "$tmp" "$config_path"
+  else
+    printf '\nincludes:\n  - phpstan-baseline.neon\n' >> "$config_path"
+  fi
+  return 0
+}
+
+has_help=false
+has_version=false
+has_config=false
+has_json_format=false
+has_generate_baseline=false
+config_value=""
+
+args=("$@")
+arg_count=${#args[@]}
+index=0
+seen_double_dash=false
+while [ "$index" -lt "$arg_count" ]; do
+  arg="${args[$index]}"
+  if [ "$seen_double_dash" = true ]; then
+    break
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      ;;
+    -h|--help)
+      has_help=true
+      ;;
+    -V|--version)
+      has_version=true
+      ;;
+    -c|--configuration)
+      has_config=true
+      next_index=$((index + 1))
+      config_value="${args[$next_index]:-}"
+      if [ -n "$config_value" ]; then
+        config_value="$(map_path "$config_value")"
+        args[$next_index]="$config_value"
+      fi
+      index=$((index + 1))
+      ;;
+    --configuration=*)
+      has_config=true
+      config_value="${arg#*=}"
+      if [ -n "$config_value" ]; then
+        config_value="$(map_path "$config_value")"
+        args[$index]="--configuration=$config_value"
+      fi
+      ;;
+    --generate-baseline)
+      args[$index]="--generate-baseline=phpstan-baseline.neon"
+      has_generate_baseline=true
+      ;;
+    --generate-baseline=*)
+      has_generate_baseline=true
+      ;;
+    --error-format)
+      next_index=$((index + 1))
+      if [ "${args[$next_index]:-}" = "json" ]; then
+        has_json_format=true
+      fi
+      index=$((index + 1))
+      ;;
+    --error-format=json)
+      has_json_format=true
+      ;;
+    --error-format=*)
+      ;;
+    analyze|analyse)
+      ;;
+    -*)
+      ;;
+    *)
+      ;;
+  esac
+  if [ "$has_help" = true ] || [ "$has_version" = true ]; then
+    break
+  fi
+  index=$((index + 1))
+done
+
+if [ "$has_help" = true ]; then
+  print_help
+  "$PHPSTAN_BIN" --help
+  exit $?
+fi
+
+if [ "$has_version" = true ]; then
+  "$PHPSTAN_BIN" --version
+  exit $?
+fi
+
+CONFIG_FILE=""
+# Prefer explicit project configs.
+for config_file in phpstan.neon phpstan.neon.dist phpstan.dist.neon; do
+  if [ -f "$config_file" ]; then
+    CONFIG_FILE="$config_file"
+    break
+  fi
+done
+
+BASE_CONFIG=""
+CONFIG_TO_USE=""
+BASE_CONFIG_ABS=""
+
+if [ "$has_config" = true ]; then
+  BASE_CONFIG="$config_value"
+elif [ -n "$CONFIG_FILE" ]; then
+  BASE_CONFIG="$CONFIG_FILE"
+else
+  echo "PHPStan config file is missing. Create phpstan.neon in the project root (for example by reinstalling the add-on) or pass --configuration <path>." >&2
+  exit 2
+fi
+
+if [ -n "$BASE_CONFIG" ]; then
+  # Resolve config to an absolute path for includes processing.
+  if [ "${BASE_CONFIG#/}" = "$BASE_CONFIG" ]; then
+    BASE_CONFIG_ABS="$(pwd)/$BASE_CONFIG"
+  else
+    BASE_CONFIG_ABS="$BASE_CONFIG"
+  fi
+fi
+
+FINAL_ARGS=()
+index=0
+seen_double_dash=false
+while [ "$index" -lt "$arg_count" ]; do
+  arg="${args[$index]}"
+  if [ "$seen_double_dash" = true ]; then
+    FINAL_ARGS+=("$(map_path "$arg")")
+    index=$((index + 1))
+    continue
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      FINAL_ARGS+=("$arg")
+      ;;
+    analyze|analyse)
+      ;;
+    -c|--configuration)
+      FINAL_ARGS+=("$arg" "${args[$((index + 1))]:-}")
+      index=$((index + 1))
+      ;;
+    --configuration=*)
+      FINAL_ARGS+=("$arg")
+      ;;
+    *)
+      FINAL_ARGS+=("$(map_path "$arg")")
+      ;;
+  esac
+  index=$((index + 1))
+done
+
+if [ "$has_config" = false ]; then
+  CONFIG_TO_USE="$BASE_CONFIG_ABS"
+fi
+
+CMD=("$PHPSTAN_BIN" analyze)
+if [ -n "$CONFIG_TO_USE" ]; then
+  CMD+=(--configuration "$CONFIG_TO_USE")
+fi
+
+if [ "$has_json_format" = true ]; then
+  if [ -n "${DDEV_HOST_PROJECT_ROOT:-}" ]; then
+    HOST_ROOT="$DDEV_HOST_PROJECT_ROOT"
+  fi
+  JSON_OUTPUT="$(mktemp /tmp/phpstan-json.XXXXXX)"
+  TMP_FILES+=("$JSON_OUTPUT")
+  "${CMD[@]}" "${FINAL_ARGS[@]}" > "$JSON_OUTPUT"
+  exit_code=$?
+  if [ -n "$HOST_ROOT" ]; then
+    # Rewrite container file paths in JSON diagnostics so IDEs can open them.
+    php -r '
+$path = $argv[1];
+$host = rtrim($argv[2], "/");
+$container = rtrim($argv[3], "/");
+$raw = @file_get_contents($path);
+if ($raw === false) { exit(0); }
+$json = json_decode($raw, true);
+if (!is_array($json)) { echo $raw; exit(0); }
+if (isset($json["files"]) && is_array($json["files"])) {
+  $rewritten = [];
+  foreach ($json["files"] as $file => $info) {
+    if (strncmp($file, $container . "/", strlen($container) + 1) === 0) {
+      $file = $host . substr($file, strlen($container));
+    }
+    $rewritten[$file] = $info;
+  }
+  $json["files"] = $rewritten;
+}
+echo json_encode($json);
+' "$JSON_OUTPUT" "$HOST_ROOT" "$CONTAINER_ROOT"
+  else
+    cat "$JSON_OUTPUT"
+  fi
+  exit $exit_code
+fi
+
+"${CMD[@]}" "${FINAL_ARGS[@]}"
+exit_code=$?
+
+if [ "$has_generate_baseline" = true ] && [ "$exit_code" -eq 0 ]; then
+  if [ -n "$CONFIG_FILE" ]; then
+    config_path="$CONFIG_FILE"
+    if [ "${config_path#/}" = "$config_path" ]; then
+      config_path="$(pwd)/$config_path"
+    fi
+    ensure_baseline_include "$config_path" || true
+  fi
+fi
+
+exit $exit_code

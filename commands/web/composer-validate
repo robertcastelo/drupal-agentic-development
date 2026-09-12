@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#ddev-generated
+set -u
+
+print_help() {
+  cat <<'USAGE'
+Usage: ddev composer-validate [args]
+
+Runs composer validate inside the DDEV web container (Drupal.org GitLab CI template defaults).
+USAGE
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      print_help
+      # Pass through to composer for full option details.
+      composer validate --help
+      exit $?
+      ;;
+  esac
+done
+
+# Run in-container to match CI behavior.
+# Use --no-interaction to prevent hanging when output is redirected.
+composer validate --no-interaction "$@"
+exit $?

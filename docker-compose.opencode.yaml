@@ -1,0 +1,33 @@
+services:
+  opencode:
+    container_name: ddev-${DDEV_SITENAME}-opencode
+
+    build:
+      context: ..
+      dockerfile: .ddev/opencode/Dockerfile
+
+    volumes:
+      - ${DDEV_APPROOT}:/var/www/html
+      - ${DDEV_APPROOT}:/home/openchamber/workspaces/sandbox
+      - ./opencode/mcp:/home/opencode/.config/opencode
+      - ./opencode/data/share:/home/opencode/.local/share/opencode
+      - ../.ddev/.agent-ssh-keys:/home/opencode/.ssh/agent-key
+      - ../.ddev/.ddev/openchamber/data/config/chats:/home/openchamber/.config/openchamber/chats
+
+    working_dir: /var/www/html
+
+    environment:
+      DDEV_PROJECT: ${DDEV_SITENAME}
+      # Per-machine provider/agent overrides, merged with the tracked
+      # opencode.jsonc. File is gitignored (.ddev/.gitignore) so it stays local.
+      OPENCODE_CONFIG: /home/opencode/.config/opencode/opencode.local.jsonc
+
+    # IMPORTANT for host access
+    ports:
+      - "3001:3000"
+
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+
+    restart: "no"

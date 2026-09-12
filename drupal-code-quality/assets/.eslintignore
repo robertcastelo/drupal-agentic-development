@@ -1,0 +1,14 @@
+#ddev-generated
+# DCQ default exclusions for local linting scope.
+# Keep custom code and site config in scope by excluding dependency/generated trees.
+**/core/**
+**/contrib/**
+**/themes/*/
+!**/themes/custom/
+**/libraries/**
+**/node_modules/**
+vendor/**
+**/dist/**
+**/build/**
+**/sites/*/files/**
+**/playwright-report/**

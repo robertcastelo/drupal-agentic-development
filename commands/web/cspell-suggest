@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+#ddev-generated
+## MutagenSync: true
+set -u
+
+source /mnt/ddev_config/commands/helpers/path-map.sh
+source /mnt/ddev_config/commands/helpers/node-toolchain.sh
+
+print_help() {
+  cat <<'USAGE'
+Usage: ddev cspell-suggest [args]
+
+Generates CSpell suggestion artifacts and optionally updates the project word list.
+USAGE
+}
+
+has_help=false
+has_version=false
+has_positional=false
+has_config=false
+seen_double_dash=false
+explicit_paths=false
+auto_yes=false
+clean_args=()
+
+for arg in "$@"; do
+  if [ "$arg" = "--yes" ]; then
+    auto_yes=true
+    continue
+  fi
+  clean_args+=("$arg")
+done
+
+for arg in "${clean_args[@]}"; do
+  if [ "$seen_double_dash" = true ]; then
+    has_positional=true
+    explicit_paths=true
+    break
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      ;;
+    -h|--help)
+      has_help=true
+      ;;
+    -V|--version)
+      has_version=true
+      ;;
+    -c|--config|--config=*)
+      has_config=true
+      ;;
+    --)
+      ;;
+    -* )
+      ;;
+    *)
+      has_positional=true
+      explicit_paths=true
+      ;;
+  esac
+  if [ "$has_help" = true ] || [ "$has_version" = true ]; then
+    break
+  fi
+done
+
+if [ "$has_help" = true ]; then
+  print_help
+fi
+
+PROJECT_ROOT="/var/www/html"
+DOCROOT="${DCQ_DOCROOT:-web}"
+DOCROOT_PATH="${PROJECT_ROOT}/${DOCROOT}"
+TOOLCHAIN_BIN=""
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is not available in the DDEV web container." >&2
+  echo "Install Node in the DDEV web container to run CSpell." >&2
+  exit 127
+fi
+
+REPORT_DIR="${PROJECT_ROOT}/dcq-reports"
+if ! mkdir -p "$REPORT_DIR"; then
+  echo "Unable to create report directory: $REPORT_DIR" >&2
+  exit 1
+fi
+# CI-style artifacts for review and optional dictionary updates.
+UNRECOGNIZED_FILE="${REPORT_DIR}/_cspell_unrecognized_words.txt"
+UPDATED_WORDS_FILE="${REPORT_DIR}/_cspell_updated_project_words.txt"
+: > "$UNRECOGNIZED_FILE"
+: > "$UPDATED_WORDS_FILE"
+
+if ! resolve_node_tool ".bin/cspell"; then
+  echo "CSpell is not installed at the project root (${PROJECT_ROOT}/node_modules)." >&2
+  echo "Re-run the DDEV add-on installer and accept Node dependency installation, or install cspell manually in the project root (npm install / yarn install)." >&2
+  exit 127
+fi
+
+if [ "$has_help" = true ]; then
+  "$TOOLCHAIN_BIN" --help
+  exit $?
+fi
+
+if [ "$has_version" = true ]; then
+  "$TOOLCHAIN_BIN" --version
+  exit $?
+fi
+
+PROJECT_DICTIONARY="${PROJECT_ROOT}/.cspell-project-words.txt"
+CMD=("$TOOLCHAIN_BIN")
+if [ "$has_config" = false ]; then
+  if [ ! -f "${PROJECT_ROOT}/.cspell.json" ]; then
+    echo "CSpell config file is missing. Create .cspell.json in the project root (for example by reinstalling the add-on)." >&2
+    exit 2
+  fi
+  CMD+=(-c "${PROJECT_ROOT}/.cspell.json")
+  if [ ! -f "$PROJECT_DICTIONARY" ]; then
+    : > "$PROJECT_DICTIONARY"
+  fi
+fi
+
+normalize_path() {
+  local path="$1"
+  path="$(map_path "$path")"
+  if [[ "$path" == /var/www/html/* ]]; then
+    path="${path#/var/www/html/}"
+  fi
+  if [ "$DOCROOT" != "web" ] && [[ "$path" == web/* ]]; then
+    path="${DOCROOT}/${path#web/}"
+  fi
+  if [[ "$path" == "${DOCROOT}/"* ]]; then
+    echo "$path"
+    return
+  fi
+  if [[ "$path" == modules/* || "$path" == themes/* || "$path" == profiles/* ]]; then
+    echo "${DOCROOT}/$path"
+    return
+  fi
+  echo "$path"
+}
+
+FLAG_ARGS=()
+POSITIONAL_ARGS=()
+args=("${clean_args[@]}")
+arg_count=${#args[@]}
+index=0
+seen_double_dash=false
+while [ "$index" -lt "$arg_count" ]; do
+  arg="${args[$index]}"
+  if [ "$seen_double_dash" = true ]; then
+    POSITIONAL_ARGS+=("$(normalize_path "$arg")")
+    index=$((index + 1))
+    continue
+  fi
+  case "$arg" in
+    --)
+      seen_double_dash=true
+      FLAG_ARGS+=("$arg")
+      ;;
+    -c|--config)
+      next_arg="${args[$((index + 1))]:-}"
+      FLAG_ARGS+=("$arg" "$(map_path "$next_arg")")
+      index=$((index + 1))
+      ;;
+    --config=*)
+      config_value="${arg#*=}"
+      FLAG_ARGS+=("--config=$(map_path "$config_value")")
+      ;;
+    -*)
+      FLAG_ARGS+=("$arg")
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$(normalize_path "$arg")")
+      ;;
+  esac
+  index=$((index + 1))
+done
+
+if [ "$explicit_paths" = false ]; then
+  POSITIONAL_ARGS=(".")
+fi
+
+if [ "$explicit_paths" = false ]; then
+  # Collect unrecognized words for review without failing the run.
+  "${CMD[@]}" "${FLAG_ARGS[@]}" --words-only "${POSITIONAL_ARGS[@]}" > "$UNRECOGNIZED_FILE" || true
+else
+  "${CMD[@]}" "${FLAG_ARGS[@]}" --words-only "${POSITIONAL_ARGS[@]}" > "$UNRECOGNIZED_FILE" || true
+fi
+
+if [ -s "$UNRECOGNIZED_FILE" ]; then
+  sort -u "$UNRECOGNIZED_FILE" -o "$UNRECOGNIZED_FILE"
+else
+  : > "$UNRECOGNIZED_FILE"
+fi
+
+if [ -f "$PROJECT_DICTIONARY" ]; then
+  # Merge existing dictionary with new suggestions.
+  cat "$PROJECT_DICTIONARY" "$UNRECOGNIZED_FILE" | sort -u > "$UPDATED_WORDS_FILE"
+else
+  sort -u "$UNRECOGNIZED_FILE" > "$UPDATED_WORDS_FILE"
+fi
+
+echo "Unrecognized words: $UNRECOGNIZED_FILE"
+echo "Updated project words: $UPDATED_WORDS_FILE"
+
+if [ -s "$UNRECOGNIZED_FILE" ]; then
+  if [ "$auto_yes" = false ]; then
+    if [ -t 0 ]; then
+      printf "Append suggested words to .cspell-project-words.txt? [y/N] "
+      read -r reply
+      case "$reply" in
+        y|Y) ;;
+        *) exit 0 ;;
+      esac
+    else
+      exit 0
+    fi
+  fi
+
+  cp "$UPDATED_WORDS_FILE" "$PROJECT_DICTIONARY"
+  echo "Updated .cspell-project-words.txt"
+fi
+
+exit 0

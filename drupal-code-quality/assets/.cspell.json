@@ -1,0 +1,122 @@
+#ddev-generated
+{
+    "description": "This default CSpell configuration for contrib projects is based on core/.cspell.json. Some of the arrays are expanded in scripts/prepare-cspell.php. See https://project.pages.drupalcode.org/gitlab_templates/jobs/cspell/ for more details.",
+    "language": "en-US",
+    "allowCompoundWords": false,
+    "globRoot": ".",
+    "minWordLength": 4,
+    "ignorePaths": [
+        "web/core",
+        "web/*/contrib/**",
+        "web/themes/!(custom)/**",
+        "web/libraries/!(custom)/**",
+        "web/sites/*/files",
+        "vendor",
+        "node_modules",
+        ".git",
+        "recipes",
+        "dcq-reports",
+        "*.patch",
+        "*.svg",
+        "*_ignore_*",
+        "build.env",
+        "get-file-via-curl.sh",
+        "_cspell_unrecognized_words.txt",
+        "_cspell_updated_project_words.txt",
+        "**/.*.json",
+        "package.json",
+        "yarn.lock",
+        "phpstan*",
+        ".*ignore",
+        "./composer.lock",
+        "./composer.patches.json",
+        "./upstream-configuration/composer.json",
+        "./gitlab_templates/CHANGELOG.md",
+        "./gitlab_templates/docs/jobs/composer.md",
+        "./gitlab_templates/assets/internal/composer.json",
+        "./composer.json",
+        "**/settings.ddev.php",
+        "**/playwright-report/**",
+        "config/sync"
+    ],
+    "dictionaries": [
+        "companies",
+        "fonts",
+        "html",
+        "php",
+        "softwareTerms",
+        "misc",
+        "typescript",
+        "node",
+        "css",
+        "bash",
+        "filetypes",
+        "npm",
+        "lorem-ipsum",
+        "sql",
+        "fullstack",
+        "drupal",
+        "dictionary",
+        "project-words"
+    ],
+    "dictionaryDefinitions": [
+        {
+            "name": "drupal",
+            "path": "web/core/misc/cspell/drupal-dictionary.txt"
+        },
+        {
+            "name": "dictionary",
+            "path": "web/core/misc/cspell/dictionary.txt"
+        },
+        {
+            "name": "project-words",
+            "path": ".cspell-project-words.txt",
+            "description": "Optional project dictionary maintained via ddev cspell-suggest."
+        }
+    ],
+    "words": [
+        "lando",
+        "ddev",
+        "endapply",
+        "nightwatchjs",
+        "testgroup",
+        "testgroups",
+        "backlinks",
+        "mdhash",
+        "uploaders",
+        "vocabs",
+        "curlopt",
+        "returntransfer",
+        "curle",
+        "customrequest",
+        "failonerror",
+        "postfields",
+        "followlocation",
+        "colourdefinitionsniff",
+        "seletorsingleline",
+        "teamplatespacingaftercomment",
+        "tforvalue",
+        "trhowscommentindentation",
+        "unecessaryfiledeclaration",
+        "blocklisted"
+    ],
+    "flagWords": [
+        "blacklist->blocklist, denylist",
+        "blacklists->blocklists, denylists",
+        "blacklist's->blocklist's, denylist's",
+        "blacklisted->blocklisted, denylisted",
+        "e-mail",
+        "grey",
+        "queuing",
+        "whitelist:allowlist",
+        "whitelists:allowlists",
+        "whitelist's:allowlist's",
+        "whitelisted:allowlisted"
+    ],
+    "overrides": [
+        {
+            "filename": "**/{*.engine,*.inc,*.install,*.module,*.profile,*.theme}",
+            "languageId": "php"
+        }
+    ]
+}
