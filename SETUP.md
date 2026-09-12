@@ -16,25 +16,21 @@ cd <destination-folder>
 # 1. Install Drupal (change version to install 10, 11, 12...)
 ddev config --project-type=drupal10 --docroot=web
 
-# 2. Generate the per-machine .ddev/.env and build the OpenChamber image
+# 2. Add any custom providers and agents (see below)
+
+# 3. Generate the per-machine .ddev/.env and build the OpenChamber image
 ddev setup
 
-# 3. Start the stack (web, db, opencode, openchamber, playwright)
+# 4. Start the stack (web, db, opencode, openchamber, playwright)
 ddev start
 
-# 4. Add Drupal (change version to install 10, 11, 12...)
+# 5. Add Drupal (change version to install 10, 11, 12...)
 ddev composer create-project "drupal/recommended-project:^10"
 ddev composer require drush/drush
 ddev drush site:install --account-name=admin --account-pass=admin -y
 ```
 
 Notes:
-
-- `ddev setup` creates `.ddev/.env` with a fresh `OPENCHAMBER_PASSWORD` from
-  `.ddev/.env.example` (the existing file is never overwritten) and ensures the
-  `openchamber:local` Docker image is built.
-- `ddev start` auto-builds the OpenCode and Playwright images and starts sshd
-  in the web container for the AI SSH transport (ddev-ai-ssh addon).
 
 ## Project name
 
@@ -65,27 +61,8 @@ at a time** on a given machine:
 
 `ddev stop` one project before `ddev start`-ing another.
 
-## Common commands
 
-```bash
-ddev start              # start everything
-ddev stop               # stop everything
-ddev restart            # stop + start
-ddev setup              # generate .env + ensure openchamber image (idempotent)
-ddev ai-ssh-status      # check sshd + SSH keys in the web container
-ddev playwright         # run Playwright E2E tests in the playwright container
-```
-
-## Notes on the AI environment
-
-- OpenCode MCP servers (Drush, Drupal Quality, Playwright→chromium) are wired via the
-  tracked `.ddev/opencode/mcp/opencode.jsonc` plus the launch scripts
-  (`playwright-mcp-launch`, `drupal-quality-mcp.mjs`, `drush-mcp.mjs`) in the same dir,
-  bind-mounted at `~/.config/opencode` and work on any fresh clone automatically.
-  This file is meant to stay portable — it only contains shared, repo-wide settings
-  and is safe to commit.
-
-## Custom providers + agents (per-machine, not tracked)
+## Custom providers + agents
 
 Providers and agents are **machine-specific**, so they are **not** stored in the
 tracked `opencode.jsonc`. Instead they live in a gitignored local overrides file:
