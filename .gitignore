@@ -4,6 +4,8 @@
 /**/Thumbs.db
 /**/desktop.ini
 /**/*.example
+!docker-compose.local.yaml.example
+!opencode/mcp/opencode.local.jsonc.example
 /.dbimageBuild
 /.ddev-docker-*.yaml
 /.*downloads
@@ -14,6 +16,7 @@
 /commands/.gitattributes
 /config.local.y*ml
 /config.*.local.y*ml
+/docker-compose.local.y*ml
 /db_snapshots
 /mutagen/mutagen.yml
 /mutagen/.start-synced
@@ -36,3 +39,6 @@ config.yaml
 opencode/data
 opencode/mcp/opencode.local.jsonc
 /.env
+traefik/certs/ai-env.crt
+traefik/certs/ai-env.key
+traefik/config/ai-env.yaml

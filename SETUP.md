@@ -61,6 +61,64 @@ at a time** on a given machine:
 
 `ddev stop` one project before `ddev start`-ing another.
 
+## Connect a provider + default model
+
+Provider keys and the default model are **per-developer** and never committed.
+Three gitignored files are involved — two are created by copying the tracked
+examples:
+
+```bash
+# 1. Compose override: passes env vars from .ddev/.env into the opencode container
+cp .ddev/docker-compose.local.yaml.example .ddev/docker-compose.local.yaml
+
+# 2. opencode config: sets the default model (read from the env var below)
+cp .ddev/opencode/mcp/opencode.local.jsonc.example .ddev/opencode/mcp/opencode.local.jsonc
+```
+
+```bash
+# 3. Fill in your values in .ddev/.env (created by `ddev setup`):
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENCODE_DEFAULT_MODEL=openrouter/qwen/qwen3.8-max-0902
+```
+
+Then `ddev restart` — config and environment are read once at container start.
+
+Notes:
+
+- Model IDs use the `provider/model-id` format. Run
+  `ddev exec -s opencode opencode models` to see what's available once your
+  key is set.
+- The example files work as-is for OpenRouter; amend them for other providers.
+- OpenChamber needs no separate configuration — it uses the same opencode
+  server, so it inherits providers and the default model.
+
+## Adding another provider
+
+Three ways, in order of simplicity:
+
+1. **`opencode auth login`** — run
+   `ddev exec -s opencode opencode auth login` and pick the provider
+   (Anthropic, OpenAI, Bedrock, ...). Credentials are stored in
+   `opencode/data/share/` which is bind-mounted from the host and gitignored,
+   so they survive restarts and rebuilds. Then point
+   `OPENCODE_DEFAULT_MODEL` in `.ddev/.env` at the new model if desired.
+
+2. **Env-var key in `.ddev/.env`** — for keys opencode reads automatically
+   (e.g. `ANTHROPIC_API_KEY`). A variable only reaches the container if a
+   compose file passes it through, so add it to your
+   `.ddev/docker-compose.local.yaml`:
+
+   ```yaml
+   services:
+     opencode:
+       environment:
+         ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+   ```
+
+3. **Custom providers** (self-hosted or anything opencode doesn't know):
+   define them in `opencode.local.jsonc` — see "Custom providers + agents"
+   below.
+
 
 ## Custom providers + agents
 
