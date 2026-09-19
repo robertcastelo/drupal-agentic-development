@@ -1,0 +1,21 @@
+# Per-developer compose override — copy to `docker-compose.local.yaml` and amend.
+# The copy is gitignored; DDEV merges any docker-compose.*.yaml automatically.
+# Values are interpolated from .ddev/.env (also gitignored), so no secrets here.
+# After editing, run: ddev restart
+
+services:
+  opencode:
+    environment:
+      # Provider API key(s).
+      # Uncomment or add providers below. Do not replace the "-" with 
+      # your key. Set the key value in .ddev/.env instead. See .env.example.
+      # OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      #
+      # AWS Bedrock (bearer token from the Bedrock console; requires model
+      # access in your AWS account). Model IDs: amazon-bedrock/<model-id>
+      # AWS_BEARER_TOKEN_BEDROCK: ${AWS_BEARER_TOKEN_BEDROCK:-}
+      #
+      # Default model for the opencode TUI and OpenChamber (consumed by
+      # opencode.local.jsonc) — set the value in .ddev/.env
+      # OPENCODE_DEFAULT_MODEL: ${OPENCODE_DEFAULT_MODEL:-}

@@ -1,0 +1,18 @@
+// Per-developer opencode config — copy to `opencode.local.jsonc` and amend.
+// The copy is gitignored and loaded via OPENCODE_CONFIG (see
+// docker-compose.opencode.yaml); it is deep-merged over the tracked
+// opencode.jsonc, so MCP servers etc. are preserved.
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Default model for the TUI and OpenChamber. The value comes from
+  // OPENCODE_DEFAULT_MODEL in .ddev/.env (format: provider/model-id).
+  "model": "{env:OPENCODE_DEFAULT_MODEL}"
+
+  // opencode auto-detects standard API key env vars (OPENROUTER_API_KEY,
+  // ANTHROPIC_API_KEY, ...) passed through docker-compose.local.yaml.
+  // Only add a provider block for custom providers or explicit overrides:
+  // "provider": {
+  //   "openrouter": { "options": { "apiKey": "{env:OPENROUTER_API_KEY}" } }
+  // }
+}
