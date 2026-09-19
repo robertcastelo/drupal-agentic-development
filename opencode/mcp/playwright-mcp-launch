@@ -19,4 +19,4 @@ if [ ! -x "$chrome" ]; then
   exit 1
 fi
 
-exec npx -y @playwright/mcp --headless --no-sandbox --browser chromium --executable-path "$chrome" "$@"
+exec npx -y @playwright/mcp@0.0.82 --headless --no-sandbox --browser chromium --executable-path "$chrome" "$@"

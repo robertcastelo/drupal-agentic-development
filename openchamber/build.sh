@@ -7,7 +7,7 @@
 #        OPENCHAMBER_TAG=v1.2.3 .ddev/openchamber/build.sh
 set -euo pipefail
 
-TAG="${OPENCHAMBER_TAG:-v1.21.1}"
+TAG="${OPENCHAMBER_TAG:-v1.24.2}"
 REPO="https://github.com/openchamber/openchamber.git"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
