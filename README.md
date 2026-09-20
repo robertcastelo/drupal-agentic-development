@@ -1,7 +1,16 @@
-# DDEV Usage
+# Drupal Agentic Development
 
-This DDEV environment runs Drupal plus AI (OpenCode, OpenChamber) and testing
-(Playwright) containers.
+An isolated DDEV based environment for agentic Drupal development and testing.
+
+Everything runs in containers, giving AI coding agents a complete Drupal environment to work in without access to the rest of your computer.
+
+- **Drupal** — web and database containers provide a live Drupal site for agents to develop against, with Drush available for command-line access.
+
+- **AI agents** — OpenCode provides the agent server, with OpenChamber providing a password protected web interface for interacting with it. The agents run in their own containers and only have access to the project repository, which is mounted as their workspace. Anything they install, run or change stays within the DDEV environment.
+
+- **Testing and quality** — a dedicated Playwright container provides a browser that agents can control through the Playwright MCP server. Drush and Drupal Quality MCP servers give agents access to Drupal CLI operations and code-quality checks, allowing them to build, test and verify changes end to end.
+
+In OpenChamber give the agent a task. It can then develop, test, and validate the Drupal site within an isolated environment **without access to anything else on your machine**.
 
 ## Access OpenChamber
 
