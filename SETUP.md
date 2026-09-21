@@ -7,13 +7,15 @@ set of AI (OpenCode, OpenChamber) and testing (Playwright) containers controlled
 - DDEV v1.25+
 - Docker
 
-## Basic steps
+## Setting up a new Drupal site
+
+Note: if you're installing this into an existing Drupal site, see "Setting up an existing Drupal site" below this section.
 
 ```bash
-git clone <repository-url> <destination-folder>
+git clone git@github.com:robertcastelo/drupal-agentic-development.git <destination-folder>/.ddev
 cd <destination-folder>
 
-# 1. Install Drupal (change version to install 10, 11, 12...)
+# 1. Configure ddev (change version to install 10, 11, 12...)
 ddev config --project-type=drupal10 --docroot=web
 
 # 2. Add any custom providers and agents (see below)
@@ -24,10 +26,48 @@ ddev setup
 # 4. Start the stack (web, db, opencode, openchamber, playwright)
 ddev start
 
-# 5. Add Drupal (change version to install 10, 11, 12...)
+# 5. Install Drupal (change version to install 10, 11, 12...)
 ddev composer create-project "drupal/recommended-project:^10"
 ddev composer require drush/drush
 ddev drush site:install --account-name=admin --account-pass=admin -y
+```
+
+## Setting up an existing Drupal site
+
+If you already have a Drupal codebase, attach this scaffold to it instead of starting fresh. This **replaces** any `.ddev/` the project already has, so first note down anything project-specific from the old `.ddev/config.yaml` (e.g. custom `web_environment` entries) — you'll re-add those in step 3.
+
+```bash
+cd <existing-drupal-repo>
+
+# 0. Stop and remove the existing .ddev/. Docker volumes (your database) are
+#    keyed by project name, not by .ddev/ contents, so they reattach
+#    automatically once you reconfigure below — no need to re-import data
+#    if this project has run under DDEV with this name before.
+ddev stop
+rm -rf .ddev
+
+# 1. Clone the scaffold in as .ddev/
+git clone git@github.com:robertcastelo/drupal-agentic-development.git .ddev
+
+# 2. Configure ddev to match your project (docroot, PHP version, etc.)
+ddev config --project-type=drupal10 --docroot=web --php-version=<your-php-version>
+
+# 3. Re-add any project-specific values you noted down in step 0
+ddev config --web-environment-add="MY_KEY=my-value"
+
+# 4. Generate the per-machine .ddev/.env and build the OpenChamber image
+ddev setup
+
+# 5. Start the stack (web, db, opencode, openchamber, playwright)
+ddev start
+
+# 6. Install dependencies against your existing codebase
+ddev composer install
+
+# 7. Bring in your data (skip if the DB volume reattached automatically)
+ddev import-db --file=/path/to/dump.sql.gz
+ddev drush cr
+ddev drush updb
 ```
 
 Notes:
