@@ -72,6 +72,199 @@ ddev drush updb
 
 Notes:
 
+## Adding PHPUnit testing
+
+Tests run inside the web container, against the project's own database. Two
+things are needed beyond a working site, and one of them is easy to miss.
+
+### Step 1: install the dev dependencies
+
+PHPUnit and Mink are not runtime dependencies — they come from core's dev
+metapackage:
+
+```bash
+ddev composer require --dev drupal/core-dev
+ddev exec -s web vendor/bin/phpunit --version
+```
+
+### Step 2: get core's test code
+
+`drupal/core` marks its `tests/` directory as `export-ignore` in its
+`.gitattributes`, so **a Composer-installed core contains no `tests/`
+directory**. That applies to the GitHub zipball Composer downloads *and* to a
+`--prefer-source` clone, and it is deliberate: the tests are not shipped to
+sites.
+
+Without it the suite cannot start at all, because the file
+`core/phpunit.xml.dist` boots is `core/tests/bootstrap.php`, and the base
+classes every test extends (`Drupal\Tests\BrowserTestBase`,
+`Drupal\KernelTests\KernelTestBase`) live there too:
+
+```
+Cannot open bootstrap script ".../core/tests/bootstrap.php"
+```
+
+Fetch the tests from core's git at exactly the revision the project has
+locked, so the test code matches the code it will test:
+
+```bash
+CORE_REF=$(jq -r '.packages[] | select(.name=="drupal/core") | .source.reference' composer.lock)
+
+WORKDIR=$(mktemp -d)
+git init -q "$WORKDIR/core"
+(
+  cd "$WORKDIR/core"
+  git remote add origin https://github.com/drupal/core.git
+  git fetch -q --depth 1 origin "$CORE_REF"
+  git checkout -q --detach FETCH_HEAD
+)
+
+cp -a "$WORKDIR/core/tests" web/core/tests
+```
+
+The install profile that functional tests install (`testing`) lives in
+`core/profiles/tests/` — under that same `tests/` directory, so it is missing
+too and the tests will fail with *"The profile testing does not exist"*:
+
+```bash
+cp -a "$WORKDIR/core/profiles/tests" web/core/profiles/tests
+
+rm -rf "$WORKDIR"
+```
+
+**Repeat this step after every `ddev composer update drupal/core`**, which
+replaces `web/core` and takes both copies with it. If you would rather not
+repeat it, keep the two copy commands in a script next to your module.
+
+### Which option you need
+
+| | Where core comes from | Step 2 |
+|---|---|---|
+| **Option A — Drupal core development** | a git checkout (you cloned the `drupal` repo) | not needed, `core/tests` is in the clone |
+| **Option B — your own project** | `composer require drupal/recommended-project` | needed |
+
+#### Option A: Drupal core development
+
+Clone the full `drupal` repository rather than the core-only one. It is a
+Composer project that already contains `core/` **and `core/tests/`**, so step 2
+does not apply — `vendor/` is created by the `composer install` below:
+
+```bash
+git clone --branch 12.x-dev git@git.drupalcode.org:project/drupal.git drupal-core-dev
+cd drupal-core-dev
+
+ddev config --project-type=drupal12 --docroot=.
+ddev start
+ddev composer install
+ddev drush site:install --account-name=admin --account-pass=admin -y
+```
+
+Core is at `core/` in that layout, so phpunit is invoked with `-c core` and
+the paths start at `core/tests/`:
+
+```bash
+ddev exec -s web vendor/bin/phpunit -c core core/tests/src/Unit
+ddev exec -s web vendor/bin/phpunit -c core core/modules/user/tests/src/Kernel
+```
+
+#### Option B: development on your own project
+
+This is the default layout this scaffold generates — `drupal/recommended-project`
+with your code in `web/modules/custom`. Do step 2, and phpunit is invoked with
+`-c web/core` and paths under your module:
+
+```bash
+ddev exec -s web vendor/bin/phpunit -c web/core web/modules/custom/my_module/tests/src/Kernel
+```
+
+### Environment variables
+
+Drupal's `phpunit.xml.dist` declares these but leaves them empty, so pass them
+in the environment:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `SIMPLETEST_BASE_URL` | the project's URL, e.g. `https://myproject.ddev.site` | must resolve **from inside the web container**, since that is where the HTTP requests are made |
+| `SIMPLETEST_DB` | `mysql://USER:PASS@db:3306/DB` | copy it out of `web/sites/default/settings.ddev.php`; the user needs `CREATE`/`DROP` because tests install into **table prefixes of that same database** |
+| `BROWSERTEST_OUTPUT_DIRECTORY` | an **absolute** path to `web/sites/simpletest/browser_output` | absolute matters: phpunit runs from the project root while the directory sits under the docroot |
+
+No special hostname is required for `SIMPLETEST_BASE_URL`. Anything that
+serves the project's docroot from inside the container works — the project's
+own URL, `http://localhost`, or the web container's service name
+(`http://web`). Prefer the project URL: it does not depend on DDEV's internal
+service naming, so it survives a rename or a different container layout.
+
+Put them in `.ddev/config.yaml` so no command needs repeating:
+
+```yaml
+web_environment:
+  - SIMPLETEST_BASE_URL=http://web
+  - SIMPLETEST_DB=mysql://db:db@db:3306/db
+  - BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output
+```
+
+Then `ddev restart`. If the project has a docroot other than `web`, adjust
+the paths.
+
+### Running the tests
+
+```bash
+# Kernel tests: no HTTP, no site install, fast.
+ddev exec -s web vendor/bin/phpunit -c web/core web/modules/custom/my_module/tests/src/Kernel
+
+# Functional tests: install a throwaway site per test method.
+ddev exec -s web vendor/bin/phpunit -c web/core web/modules/custom/my_module/tests/src/Functional
+
+# One class, or one method, across both directories.
+ddev exec -s web vendor/bin/phpunit -c web/core web/modules/custom/my_module/tests/src
+ddev exec -s web vendor/bin/phpunit -c web/core --filter testMyMethod web/modules/custom/my_module/tests/src
+```
+
+`-c web/core` selects core's `phpunit.xml.dist`, which is what sets the
+bootstrap, the test suites and the (empty) env defaults above.
+
+### Keeping it in a script
+
+Three long environment variables get old fast, so as an alternativer use the one-line: `tools/run-legal-tests.sh`
+
+Which runs:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TESTS=("$@")
+[ ${#TESTS[@]} -eq 0 ] && TESTS=(web/modules/custom/my_module/tests/src)
+
+mkdir -p "$ROOT/web/sites/simpletest/browser_output"
+
+ddev exec -s web -- env \
+  SIMPLETEST_BASE_URL="https://myproject.ddev.site" \
+  SIMPLETEST_DB="mysql://db:db@db:3306/db" \
+  BROWSERTEST_OUTPUT_DIRECTORY="$ROOT/web/sites/simpletest/browser_output" \
+  ./vendor/bin/phpunit -c web/core "${TESTS[@]}"
+```
+
+### Notes and gotchas
+
+- **`web/sites/simpletest/` is disposable.** Tests write per-run directories and
+  the failed-test HTML there. Deleting it is safe; a 404 for its pages is
+  expected.
+- **Drupal 12 requires `#[RunTestsInSeparateProcesses]`** on every kernel and
+  functional test class. Put it on the concrete class — an abstract base class
+  is not enough, the check reads the class under test.
+- **Query strings in `drupalGet()` need an absolute URL.** A relative path
+  like `drupalGet('some/path?token=abc')` gets percent-encoded into the path
+  and 404s; build the URL with `$this->baseUrl` instead.
+- **Functional (browser) tests are slow**: each test method installs a site.
+  Keep the kernel tests separate so the fast feedback loop stays fast.
+- **JavaScript tests (`FunctionalJavascript`) are not set up here.** They need a
+  chromedriver/selenium endpoint via `MINK_DRIVER_ARGS_WEBDRIVER`, which this
+  stack does not provide.
+- **A leftover deprecation count in the output is not a failure** as long as the
+  exit code is 0.
+
 ## Project name
 
 The project name is derived from the enclosing folder name.
