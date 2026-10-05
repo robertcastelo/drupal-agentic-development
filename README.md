@@ -1,4 +1,4 @@
-# Drupal Agentic Development
+# Drupal Agentic Development (DAD)
 
 An isolated DDEV based environment for agentic Drupal development and testing.
 

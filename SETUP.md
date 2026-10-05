@@ -16,7 +16,7 @@ git clone git@github.com:robertcastelo/drupal-agentic-development.git <destinati
 cd <destination-folder>
 
 # 1. Configure ddev (change version to install 10, 11, 12...)
-ddev config --project-type=drupal10 --docroot=web
+ddev config --project-type=drupal12 --docroot=web
 
 # 2. Add any custom providers and agents (see below)
 
@@ -27,7 +27,7 @@ ddev setup
 ddev start
 
 # 5. Install Drupal (change version to install 10, 11, 12...)
-ddev composer create-project "drupal/recommended-project:^10"
+ddev composer create-project "drupal/recommended-project:^12"
 ddev composer require drush/drush
 ddev drush site:install --account-name=admin --account-pass=admin -y
 ```
@@ -50,7 +50,7 @@ rm -rf .ddev
 git clone git@github.com:robertcastelo/drupal-agentic-development.git .ddev
 
 # 2. Configure ddev to match your project (docroot, PHP version, etc.)
-ddev config --project-type=drupal10 --docroot=web --php-version=<your-php-version>
+ddev config --project-type=drupal12 --docroot=web --php-version=<your-php-version>
 
 # 3. Re-add any project-specific values you noted down in step 0
 ddev config --web-environment-add="MY_KEY=my-value"
@@ -271,7 +271,7 @@ The project name is derived from the enclosing folder name.
 This lets you keep several clones side-by-side on one machine.
 
 **Important:** each clone must live in a folder with a distinct name (e.g.
-`sandbox-10`, `sandbox-11`). If two clones share the same folder name they will
+`sandbox-11`, `sandbox-12`). If two clones share the same folder name they will
 collide in the DDEV project registry:
 
 ```
