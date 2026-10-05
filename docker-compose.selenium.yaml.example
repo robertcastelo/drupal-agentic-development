@@ -1,0 +1,24 @@
+#ddev-generated
+# Headless Chromium for Behat @javascript scenarios.
+# Behat connects to http://selenium:4444/wd/hub (see behat.yml).
+# Watch the browser live at https://<project>.ddev.site:7900 (password: secret).
+services:
+  selenium:
+    image: selenium/standalone-chromium:152.0
+    container_name: ddev-${DDEV_SITENAME}-selenium
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    shm_size: 2gb
+    expose:
+      - "4444"
+      - "7900"
+    environment:
+      - VIRTUAL_HOST=${DDEV_HOSTNAME}
+      - HTTPS_EXPOSE=7900:7900
+      - HTTP_EXPOSE=7910:7900
+      - SE_NODE_MAX_SESSIONS=2
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+    volumes:
+      - ".:/mnt/ddev_config"
+      - "ddev-global-cache:/mnt/ddev-global-cache"
