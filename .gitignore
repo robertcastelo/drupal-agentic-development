@@ -6,6 +6,8 @@
 /**/*.example
 !docker-compose.local.yaml.example
 !opencode/mcp/opencode.local.jsonc.example
+!docker-compose.backstop.yaml.example
+!docker-compose.selenium.yaml.example
 /.dbimageBuild
 /.ddev-docker-*.yaml
 /.*downloads
@@ -29,9 +31,8 @@
 /providers/upsun.yaml
 /share-providers/cloudflared.sh
 /share-providers/ngrok.sh
-/traefik/config/drupal-10.yaml
-/traefik/certs/drupal-10.crt
-/traefik/certs/drupal-10.key
+/traefik/certs/
+/traefik/config/*.yaml
 /xhprof/xhprof_prepend.php
 /**/README.*
 config.yaml
@@ -42,3 +43,11 @@ opencode/mcp/opencode.local.jsonc
 traefik/certs/ai-env.crt
 traefik/certs/ai-env.key
 traefik/config/ai-env.yaml
+
+# Installed by project-level DDEV add-ons (e.g. swk-microsites: tests/ddev-addon).
+# Opt-in copies of the compose files: docker-compose.{backstop,selenium}.yaml.example
+/addon-metadata/*
+/commands/host/backstop
+/commands/web/behat
+/docker-compose.backstop.yaml
+/docker-compose.selenium.yaml

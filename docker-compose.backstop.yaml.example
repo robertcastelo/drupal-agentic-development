@@ -1,0 +1,22 @@
+#ddev-generated
+# BackstopJS for visual regression. The image is pinned so screenshots render
+# identically for everyone; bumping it means regenerating all references.
+# Microsite hostnames resolve to ddev-router inside the ddev_default network.
+services:
+  backstop:
+    image: backstopjs/backstopjs:6.3.25
+    container_name: ddev-${DDEV_SITENAME}-backstop
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    entrypoint: ["tail", "-f", "/dev/null"]
+    # Run as the host user so reports/references aren't root-owned on Linux.
+    user: "${DDEV_UID}:${DDEV_GID}"
+    environment:
+      - HOME=/tmp
+    shm_size: 2gb
+    working_dir: /var/www/html
+    volumes:
+      - "../:/var/www/html"
+      - ".:/mnt/ddev_config"
+      - "ddev-global-cache:/mnt/ddev-global-cache"
