@@ -16,6 +16,15 @@ In OpenChamber give the agent a task. It can then develop, test, and validate th
 
 OpenChamber runs on **127.0.0.1:3002**.
 
+The quickest way in is:
+
+```bash
+ddev openchamber
+```
+
+This prints the UI password and opens OpenChamber in your browser (starting
+the project first if it isn't running).
+
 The UI is password-protected. Get the password from `.ddev/.env`:
 
 ```bash
