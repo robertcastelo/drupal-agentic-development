@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+## Description: Launch OpenChamber in a browser
+## Usage: openchamber
+## Example: ddev openchamber
+
+# OpenChamber is published on a fixed host port (see docker-compose.openchamber.yaml).
+URL="http://127.0.0.1:3002"
+
+# Remind the user of the UI password, read from the per-machine .ddev/.env.
+if [ -f .ddev/.env ]; then
+  PASSWORD=$(grep -E '^OPENCHAMBER_PASSWORD=' .ddev/.env | cut -d= -f2-)
+  [ -n "$PASSWORD" ] && echo "OpenChamber password: ${PASSWORD}"
+fi
+
+ddev launch "$URL"
