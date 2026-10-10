@@ -7,7 +7,7 @@ services:
   opencode:
     environment:
       # Provider API key(s).
-      # Uncomment or add providers below. Do not replace the "-" with 
+      # Uncomment or add providers below. Do not replace the "-" with
       # your key. Set the key value in .ddev/.env instead. See .env.example.
       # OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -19,3 +19,7 @@ services:
       # Default model for the opencode TUI and OpenChamber (consumed by
       # opencode.local.jsonc) — set the value in .ddev/.env
       # OPENCODE_DEFAULT_MODEL: ${OPENCODE_DEFAULT_MODEL:-}
+#web_environment:
+#  - SIMPLETEST_BASE_URL=http://web
+#  - SIMPLETEST_DB=mysql://db:db@db:3306/db
+#  - BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output

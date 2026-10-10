@@ -194,17 +194,44 @@ own URL, `http://localhost`, or the web container's service name
 (`http://web`). Prefer the project URL: it does not depend on DDEV's internal
 service naming, so it survives a rename or a different container layout.
 
-Put them in `.ddev/config.yaml` so no command needs repeating:
+### Where to put them
 
-```yaml
-web_environment:
-  - SIMPLETEST_BASE_URL=http://web
-  - SIMPLETEST_DB=mysql://db:db@db:3306/db
-  - BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output
+DDEV injects the variables from `.ddev/.env` into **every** container in the
+project, including `web`, where phpunit runs. `.ddev/.env` is gitignored and
+per-machine; the committed copy of the settings lives in `.ddev/.env.example`.
+
+**Fresh clone:** `ddev setup` generates `.env` from `.env.example` and the test
+settings come across automatically — nothing to do.
+
+**Existing machine:** `ddev setup` never overwrites an existing `.env`, so if
+you cloned or ran `ddev setup` before these settings existed, copy them across
+once:
+
+```bash
+# Append any of the three that are missing, leaving the rest of .env alone.
+grep -q SIMPLETEST_DB .ddev/.env || cat >> .ddev/.env <<'EOF'
+
+SIMPLETEST_BASE_URL=http://web
+SIMPLETEST_DB=mysql://db:db@db:3306/db
+BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output
+EOF
+
+ddev restart
 ```
 
-Then `ddev restart`. If the project has a docroot other than `web`, adjust
-the paths.
+Confirm what the container actually received:
+
+```bash
+ddev exec -s web env | grep -E 'SIMPLETEST|BROWSERTEST'
+```
+
+DDEV reads these files **while containers are created**, so `ddev restart` is
+required after any edit — without it the running container keeps the old
+environment and the change appears to do nothing.
+
+If you prefer to scope them to the web container only, use `.ddev/.env.web`
+instead of `.ddev/.env` (needs DDEV ≥ 1.25.4). If the project has a docroot
+other than `web`, adjust `BROWSERTEST_OUTPUT_DIRECTORY`.
 
 ### Running the tests
 
@@ -225,9 +252,17 @@ bootstrap, the test suites and the (empty) env defaults above.
 
 ### Keeping it in a script
 
-Three long environment variables get old fast, so as an alternativer use the one-line: `tools/run-legal-tests.sh`
+`tools/run-legal-tests.sh` does the same thing and is the shortest way to run a
+suite:
 
-Which runs:
+```bash
+tools/run-legal-tests.sh                                  # the whole module
+tools/run-legal-tests.sh web/modules/custom/my_module/tests/src/Kernel
+```
+
+It passes the three variables explicitly on the `env` call, so it works even
+before the `.env` copy above has been done, and it defaults to the project's own
+URL. The script it runs, in short:
 
 ```bash
 #!/usr/bin/env bash
@@ -248,6 +283,14 @@ ddev exec -s web -- env \
 
 ### Notes and gotchas
 
+- **`exit status 2` with no test output means the variables are missing.** That
+  is PHPUnit's `EXCEPTION_EXIT`, raised inside the kernel bootstrap before a
+  single test runs, so it reports no failures and looks like a crash. Run
+  `ddev exec -s web env | grep -E 'SIMPLETEST|BROWSERTEST'` — empty output means
+  `.ddev/.env` did not reach the container; `ddev restart` after copying it in.
+  The underlying message, if you can see it, is either *"There is no database
+  connection so no tests can be run. You must provide a SIMPLETEST_DB environment
+  variable…"* or *"You must provide a SIMPLETEST_BASE_URL environment variable…"*
 - **`web/sites/simpletest/` is disposable.** Tests write per-run directories and
   the failed-test HTML there. Deleting it is safe; a 404 for its pages is
   expected.
