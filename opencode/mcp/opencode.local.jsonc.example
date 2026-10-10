@@ -15,4 +15,23 @@
   // "provider": {
   //   "openrouter": { "options": { "apiKey": "{env:OPENROUTER_API_KEY}" } }
   // }
+
+  // LiteLLM gateway (optional, enabled with `ddev setup-litellm`): routes
+  // every request through the local gateway so usage is metered and the
+  // key's budget is enforced. Copy the block, list the model names exactly
+  // as they appear in the LiteLLM UI, and set OPENCODE_DEFAULT_MODEL in
+  // .ddev/.env to litellm/<model-name>. See SETUP.md, "Adding LiteLLM".
+  // "provider": {
+  //   "litellm": {
+  //     "name": "LiteLLM gateway",
+  //     "npm": "@ai-sdk/openai-compatible",
+  //     "options": {
+  //       "baseURL": "http://litellm:4000/v1",
+  //       "apiKey": "{env:LITELLM_VIRTUAL_KEY}"
+  //     },
+  //     "models": {
+  //       "your-model-name": { "name": "Your model name (from the LiteLLM UI)" }
+  //     }
+  //   }
+  // }
 }

@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# One-time (or re-runnable) LiteLLM gateway setup for this project.
+#
+# Usage: ddev setup-litellm [--budget <usd>] [--budget-duration <period>]
+#
+# LiteLLM is an optional LLM gateway that sits between opencode and the
+# model providers, so usage is metered and budgets are enforced. Everything
+# runs in the DDEV environment: the gateway on 127.0.0.1:4000 (UI at /ui)
+# plus a Postgres database that stores models, keys and spend logs.
+#
+# What it does (idempotent - safe to re-run):
+#   1. Generates LITELLM_MASTER_KEY + LITELLM_SALT_KEY (sk-...) and appends
+#      them to .ddev/.env if missing.
+#   2. Enables the gateway by copying
+#      docker-compose.litellm.yaml.example to docker-compose.litellm.yaml.
+#   3. Brings the stack up (ddev start/restart) and waits for the gateway.
+#   4. Creates a budgeted virtual key for opencode via the API and appends
+#      LITELLM_VIRTUAL_KEY to .ddev/.env (skipped if already present).
+#
+# Run this after `ddev start` (it starts/restarts the stack itself if
+# needed). Then follow the printed next steps to add models in the UI and
+# wire opencode through the gateway, and finish with `ddev restart`.
+#
+# Flags:
+#   --budget <usd>            max spend for the opencode key (default 5.00)
+#   --budget-duration <period> rolling budget window, e.g. 30d (default 30d)
+#
+# Gotchas:
+#   - Regenerating LITELLM_SALT_KEY (delete it from .ddev/.env and re-run)
+#     makes provider keys stored in the gateway database unreadable. Do not
+#     do this unless you intend to re-enter all provider keys in the UI.
+#   - To re-issue only the opencode key, delete LITELLM_VIRTUAL_KEY from
+#     .ddev/.env and re-run; the old key keeps working until you block it.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cd "$ROOT"
+
+ENV_FILE=".ddev/.env"
+EXAMPLE=".ddev/docker-compose.litellm.yaml.example"
+LIVE=".ddev/docker-compose.litellm.yaml"
+URL="http://127.0.0.1:4000"
+BUDGET="5.00"
+BUDGET_DURATION="30d"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --budget) BUDGET="${2:---budget needs a value, e.g. 5}"; shift 2 ;;
+    --budget-duration) BUDGET_DURATION="${2:---budget-duration needs a value, e.g. 30d}"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+if ! [[ "$BUDGET" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+  echo "ERROR: --budget must be a USD amount, e.g. 5 or 5.00 (got: $BUDGET)" >&2
+  exit 1
+fi
+
+SITE_NAME="$(basename "$ROOT")"
+
+echo "==> LiteLLM setup for $SITE_NAME"
+
+# 1. Master + salt keys, generated once and kept stable.
+for var in LITELLM_MASTER_KEY LITELLM_SALT_KEY; do
+  if grep -q "^${var}=" "$ENV_FILE" 2>/dev/null; then
+    echo "    ${var} already in $ENV_FILE - leaving untouched."
+  else
+    printf '%s=sk-%s\n' "$var" "$(openssl rand -hex 32)" >> "$ENV_FILE"
+    echo "    Generated ${var} in $ENV_FILE."
+  fi
+done
+
+# 2. Enable the gateway + database services.
+if [ -f "$LIVE" ]; then
+  echo "    docker-compose.litellm.yaml already enabled."
+elif [ -f "$EXAMPLE" ]; then
+  cp "$EXAMPLE" "$LIVE"
+  echo "    Enabled the gateway (docker-compose.litellm.yaml)."
+else
+  echo "ERROR: $EXAMPLE not found." >&2
+  exit 1
+fi
+
+# 3. Make sure the gateway is running.
+litellm_up() {
+  curl -sf "$URL/health/liveliness" >/dev/null 2>&1
+}
+
+if ! litellm_up; then
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^ddev-${SITE_NAME}-web$"; then
+    echo "    Restarting the stack to bring up litellm..."
+    ddev restart
+  else
+    echo "    Starting the stack..."
+    ddev start
+  fi
+fi
+
+echo -n "    Waiting for the gateway"
+for i in $(seq 1 90); do
+  if litellm_up; then
+    echo " ready."
+    break
+  fi
+  printf '.'
+  sleep 2
+  if [ "$i" -eq 90 ]; then
+    echo ""
+    echo "ERROR: LiteLLM did not become ready at $URL." >&2
+    echo "       Check the logs: ddev logs -s litellm" >&2
+    exit 1
+  fi
+done
+
+# 4. Budgeted virtual key for opencode.
+if grep -q "^LITELLM_VIRTUAL_KEY=" "$ENV_FILE" 2>/dev/null; then
+  echo "    LITELLM_VIRTUAL_KEY already in $ENV_FILE - key left untouched."
+else
+  MASTER_KEY="$(sed -n 's/^LITELLM_MASTER_KEY=//p' "$ENV_FILE")"
+  echo "    Creating the opencode key (max \$$BUDGET, rolling $BUDGET_DURATION)..."
+  RESPONSE="$(curl -sf -X POST "$URL/key/generate" \
+    -H "Authorization: Bearer $MASTER_KEY" \
+    -H 'Content-Type: application/json' \
+    -d "{\"key_alias\": \"opencode\", \"max_budget\": ${BUDGET}, \"budget_duration\": \"${BUDGET_DURATION}\"}")"
+  VIRTUAL_KEY="$(printf '%s' "$RESPONSE" | sed -n 's/.*"key"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  if [ -z "$VIRTUAL_KEY" ]; then
+    echo "ERROR: /key/generate did not return a key." >&2
+    echo "       Response: $RESPONSE" >&2
+    exit 1
+  fi
+  printf 'LITELLM_VIRTUAL_KEY=%s\n' "$VIRTUAL_KEY" >> "$ENV_FILE"
+  echo "    Saved LITELLM_VIRTUAL_KEY to $ENV_FILE."
+fi
+
+echo "==> LiteLLM setup complete. Next steps (see SETUP.md, 'Adding LiteLLM'):"
+echo "  1. Open the Admin UI: $URL/ui"
+echo "     (user: admin, password: the LITELLM_MASTER_KEY value from $ENV_FILE)"
+echo "  2. Add your models + provider keys under 'Models + Endpoints'."
+echo "  3. Wire opencode: in .ddev/opencode/mcp/opencode.local.jsonc enable"
+echo "     the commented 'litellm' provider block and list the model names"
+echo "     exactly as they appear in the UI."
+echo "  4. Set OPENCODE_DEFAULT_MODEL=litellm/<model-name> in $ENV_FILE."
+echo "  5. ddev restart"

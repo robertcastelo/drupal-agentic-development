@@ -434,6 +434,7 @@ at a time** on a given machine:
 |------------|-----------|
 | opencode   | 3001      |
 | openchamber| 3002      |
+| litellm (optional) | 127.0.0.1:4000 |
 | web sshd   | 127.0.0.1:2222 |
 
 `ddev stop` one project before `ddev start`-ing another.
@@ -468,6 +469,9 @@ Notes:
 - The example files work as-is for OpenRouter; amend them for other providers.
 - OpenChamber needs no separate configuration — it uses the same opencode
   server, so it inherits providers and the default model.
+- To meter usage and enforce budgets on top of (or instead of) direct
+  provider access, route through the optional LiteLLM gateway — see
+  "Adding LiteLLM (usage + budgets)" below.
 
 ## Adding another provider
 
@@ -495,6 +499,110 @@ Three ways, in order of simplicity:
 3. **Custom providers** (self-hosted or anything opencode doesn't know):
    define them in `opencode.local.jsonc` — see "Custom providers + agents"
    below.
+
+4. **Route any of them through LiteLLM** to meter usage and enforce
+   budgets — see "Adding LiteLLM (usage + budgets)" below.
+
+## Adding LiteLLM (usage + budgets)
+
+LiteLLM is an optional LLM gateway that sits between opencode and your model
+providers. It meters every request (tokens, cost) and enforces budgets and
+rate limits, so you can see exactly what the agents spend. It runs as two
+extra containers: the gateway (Admin UI at `http://127.0.0.1:4000/ui`) and a
+Postgres database that stores the models, keys and spend logs — without the
+database LiteLLM can neither track spend nor enforce budgets.
+
+### Step 1: enable it
+
+```bash
+ddev setup-litellm --budget 5 --budget-duration 30d
+```
+
+It is idempotent - re-run it any time. What it does:
+
+1. Generates `LITELLM_MASTER_KEY` and `LITELLM_SALT_KEY` (both `sk-...`) in
+   `.ddev/.env`. The master key is the Admin UI password; the salt key
+   encrypts the provider keys stored in the gateway database and must stay
+   **stable** — regenerating it makes stored provider keys unreadable.
+2. Copies `docker-compose.litellm.yaml.example` to
+   `docker-compose.litellm.yaml`, enabling the `litellm` and `litellm-db`
+   services (the copy is gitignored, like selenium's).
+3. Starts/restarts the stack and waits for the gateway.
+4. Creates a budgeted virtual key for opencode via the API: `--budget` is
+   the max spend in USD, `--budget-duration` the rolling window (default
+   $5.00 per 30 days). The key is saved in `.ddev/.env` as
+   `LITELLM_VIRTUAL_KEY`.
+
+### Step 2: add your models
+
+Open `http://127.0.0.1:4000/ui` (user `admin`, password = the
+`LITELLM_MASTER_KEY` value from `.ddev/.env`), go to **Models + Endpoints**
+and add each model with its provider API key. Models and keys are stored in
+the local `litellm-db` volume (encrypted with the salt key) — they are
+per-project and never committed.
+
+### Step 3: point opencode at the gateway
+
+1. In `.ddev/opencode/mcp/opencode.local.jsonc` (copy
+   `opencode.local.jsonc.example` next to it if you don't have the file
+   yet), enable the commented `litellm` provider block and list the model
+   names exactly as they appear in the LiteLLM UI:
+
+   ```jsonc
+   "provider": {
+     "litellm": {
+       "name": "LiteLLM gateway",
+       "npm": "@ai-sdk/openai-compatible",
+       "options": {
+         "baseURL": "http://litellm:4000/v1",
+         "apiKey": "{env:LITELLM_VIRTUAL_KEY}"
+       },
+       "models": { "your-model-name": { "name": "Your model" } }
+     }
+   }
+   ```
+
+2. Set the default model in `.ddev/.env` with the `litellm/` provider prefix
+   (`your-model-name` = the name from the LiteLLM UI):
+
+   ```
+   OPENCODE_DEFAULT_MODEL=litellm/your-model-name
+   ```
+
+3. `ddev restart` — the key and config are read when the containers start.
+
+### Watching usage and budgets
+
+- **UI:** `http://127.0.0.1:4000/ui` — **Virtual Keys** shows the opencode
+  key's spend and budget progress; the admin screens have per-request and
+  per-model spend logs.
+- **Budgets** can be set per key (the `--budget` flag or the key's edit
+  screen), per user and per team. A key over budget is rejected until its
+  window rolls over. To raise a budget, edit the key in the UI, or delete
+  `LITELLM_VIRTUAL_KEY` from `.ddev/.env` and re-run
+  `ddev setup-litellm --budget 20`.
+
+### Notes and gotchas
+
+- **`ddev restart` after any `.ddev/.env` edit** — the key only reaches the
+  opencode container at container start.
+- **The opencode key is model-unrestricted by design** — it can use whatever
+  you add in the UI. To restrict it, edit the key's model list in the UI.
+- **Spend is $0.00 for models LiteLLM has no price for.** Costs are
+  calculated from LiteLLM's built-in price map, so any model from a known
+  provider (OpenRouter, OpenAI, Anthropic, ...) is metered automatically.
+  Self-hosted endpoints (e.g. a local oMLX server) have no known price and
+  log $0.00 spend — requests, tokens and rate limits are still tracked, and
+  their budget is only consumed by priced models.
+- **The database is per-project**: the volume is named
+  `<project>-litellm-pg`. `ddev stop` keeps the spend data; the volume
+  (and its history) is removed only when you delete it or the project.
+- **Only one clone at a time** — like the other AI containers, litellm
+  binds a fixed host port; see "Running multiple clones".
+- **To remove LiteLLM entirely**: delete `docker-compose.litellm.yaml` and
+  the three `LITELLM_*` lines from `.ddev/.env`, then `ddev restart`. The
+  volume survives until you remove it explicitly
+  (`docker volume rm <project>-litellm-pg`).
 
 
 ## Custom providers + agents

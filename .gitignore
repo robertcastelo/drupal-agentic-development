@@ -8,6 +8,7 @@
 !opencode/mcp/opencode.local.jsonc.example
 !docker-compose.backstop.yaml.example
 !docker-compose.selenium.yaml.example
+!docker-compose.litellm.yaml.example
 /.dbimageBuild
 /.ddev-docker-*.yaml
 /.*downloads
@@ -45,9 +46,10 @@ traefik/certs/ai-env.key
 traefik/config/ai-env.yaml
 
 # Installed by project-level DDEV add-ons (e.g. swk-microsites: tests/ddev-addon).
-# Opt-in copies of the compose files: docker-compose.{backstop,selenium}.yaml.example
+# Opt-in copies of the compose files: docker-compose.{backstop,selenium,litellm}.yaml.example
 /addon-metadata/*
 /commands/host/backstop
 /commands/web/behat
 /docker-compose.backstop.yaml
 /docker-compose.selenium.yaml
+/docker-compose.litellm.yaml

@@ -1,0 +1,61 @@
+#ddev-generated
+# LiteLLM gateway (optional) - meters all LLM traffic from opencode so
+# usage and budgets can be tracked and enforced.
+#
+#   ddev setup-litellm --budget 5    enables this file, generates the keys
+#   ddev restart
+#   UI: http://127.0.0.1:4000/ui    (user: admin, password: LITELLM_MASTER_KEY)
+#
+# litellm-db is required: without a database LiteLLM neither tracks spend
+# nor enforces budgets. It is only reachable from inside the DDEV network
+# (no host port); its data volume is per-project so clones don't share
+# spend logs. See "Adding LiteLLM (usage + budgets)" in SETUP.md.
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:v1.104.2
+    container_name: ddev-${DDEV_SITENAME}-litellm
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?run "ddev setup-litellm" first}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?run "ddev setup-litellm" first}
+      DATABASE_URL: postgresql://litellm:litellm@litellm-db:5432/litellm
+      # Models and provider keys are managed in the Admin UI and stored in
+      # litellm-db, encrypted with LITELLM_SALT_KEY - nothing is committed.
+      STORE_MODEL_IN_DB: "True"
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    networks:
+      - ddev_default
+    restart: "no"
+
+  litellm-db:
+    image: postgres:16
+    container_name: ddev-${DDEV_SITENAME}-litellm-db
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    # Fixed local credentials: the DB is never bound to the host and only
+    # exists for this project's gateway (same posture as selenium's "secret").
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+      POSTGRES_DB: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ddev_default
+    volumes:
+      - litellm_postgres_data:/var/lib/postgresql/data
+    restart: "no"
+
+volumes:
+  litellm_postgres_data:
+    name: ${DDEV_SITENAME}-litellm-pg
