@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Run Behat features inside the web container.
+#
+# Usage: ddev behat [behat args...]
+#   ddev behat                              run all features
+#   ddev behat tests/features/foo.feature   run one feature file
+#   ddev behat --tags=@javascript           JavaScript scenarios
+#                                          (needs the selenium service)
+#
+# Requires `ddev setup-behat` to have been run once.
+
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
+
+if [ ! -f behat.yml ]; then
+  echo "behat.yml not found - run: ddev setup-behat" >&2
+  exit 1
+fi
+
+ddev exec -s web vendor/bin/behat "$@"
