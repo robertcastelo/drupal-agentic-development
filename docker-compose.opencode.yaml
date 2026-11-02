@@ -33,6 +33,6 @@ services:
       com.ddev.approot: ${DDEV_APPROOT}
 
     x-ddev:
-      describe-info: "OpenCode 2.2.1"
+      describe-info: "OpenCode 2.2.5"
 
     restart: "no"

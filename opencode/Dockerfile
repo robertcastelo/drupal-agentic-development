@@ -113,7 +113,7 @@ ENV NPM_CONFIG_PREFIX=${USER_HOME}/.npm-global
 ENV PATH="${USER_HOME}/.npm-global/bin:${PATH}"
 
 # Install OpenCode globally (anomalyco/opencode — pinned)
-RUN npm install -g @opencode/cli@2.2.1
+RUN npm install -g @opencode/cli@2.2.5
 
 # Install Playwright + Chromium for opencode browser interaction tools
 # Also install Firefox for @playwright/mcp MCP server (chrome channel not available on ARM64)

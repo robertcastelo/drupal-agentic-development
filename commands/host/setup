@@ -33,11 +33,6 @@ else
 fi
 
 # Ensure the OpenChamber image is present so `ddev start` won't fail.
-if ! docker image inspect openchamber:local >/dev/null 2>&1; then
-  echo "    Building openchamber:local (first run)..."
-  .ddev/openchamber/build.sh
-else
-  echo "    openchamber:local image already present."
-fi
+.ddev/openchamber/build.sh --if-needed
 
 echo "==> Setup complete. You can now run: ddev start"
