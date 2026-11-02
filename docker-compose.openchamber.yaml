@@ -26,6 +26,6 @@ services:
       com.ddev.approot: ${DDEV_APPROOT}
 
     x-ddev:
-      describe-info: "OpenChamber v2.5.3"
+      describe-info: "OpenChamber v2.6.0"
 
     restart: "no"
